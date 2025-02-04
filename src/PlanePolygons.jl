@@ -10,7 +10,8 @@ export Line,
     point_in_right_half_plane,
     point_in_left_half_plane,
     point_on_line,
-    line_intersect
+    line_intersect,
+    lines_parallel
 
 export ClockwiseOrientedPolygon, SClosedPolygon, ClosedPolygon
 export num_vertices,
@@ -66,7 +67,14 @@ Represents a line in the plane that passes through `p` in direction `dir`.
 Fields
 ---
 - `p::Point{T}`
-- `dir::Vec{T}`  
+- `dir::Vec{T}`
+
+Methods
+---
+- `right_normal(ℓ)`
+- `left_normal(ℓ)`
+- `line_intersect(ℓ1, ℓ2; atol)`
+- `lines_parallel(ℓ1, ℓ2; atol)`
 """
 struct Line{T}
     p::Point{T}
@@ -147,6 +155,15 @@ function point_on_line(ℓ::Line, pt; atol = 1.0e-12)
     v1 = pt - ℓ.p
     v2 = v1 ./ ℓ.dir
     return isapprox(v2[1], v2[2]; atol = atol)
+end
+
+"""
+    lines_parallel(ℓ1, ℓ2; atol)
+
+Test if two lines are parallel.
+"""
+function lines_parallel(ℓ1, ℓ2; atol=1.0e-12)
+    return vectors_parallel(ℓ1.dir, ℓ2.dir; atol=atol)
 end
 
 """
