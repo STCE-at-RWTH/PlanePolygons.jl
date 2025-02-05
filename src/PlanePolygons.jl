@@ -329,7 +329,12 @@ function poly_intersection(poly1, poly2; atol = 1.0e-12)
     end
     res = poly1
     for ℓ ∈ edge_lines(poly2)
-        (res, _) = cut_poly_with_line(res, ℓ; atol = atol)
+        (a, b) = cut_poly_with_line(res, ℓ; atol = atol)
+        if isnothing(a)
+            res = b
+        else
+            res = a
+        end
     end
     return res
 end
