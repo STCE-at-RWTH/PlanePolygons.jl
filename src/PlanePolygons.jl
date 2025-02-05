@@ -27,7 +27,8 @@ export num_vertices,
     poly_line_intersections,
     poly_intersection,
     are_polygons_intersecting,
-    cut_poly_with_line
+    cut_poly_with_line,
+    polygons_equal
 
 """
     Point{T}
@@ -141,9 +142,9 @@ end
 Test if the point `point` is to the left of the hyperplane defined by the line `ℓ`.
 """
 function point_in_left_half_plane(ℓ::Line, pt; atol = 1.0e-10)
-    v1 = left_normal(ℓ) ⋅ pt
-    v2 = left_normal(ℓ) ⋅ ℓ.p
-    return v1 > v2 || isapprox(v1, v2; atol = atol)
+    return (
+        point_on_line(ℓ, pt; atol = atol) || !point_in_right_half_plane(ℓ, pt; atol = atol)
+    )
 end
 
 """
@@ -162,8 +163,8 @@ end
 
 Test if two lines are parallel.
 """
-function lines_parallel(ℓ1, ℓ2; atol=1.0e-12)
-    return vectors_parallel(ℓ1.dir, ℓ2.dir; atol=atol)
+function lines_parallel(ℓ1, ℓ2; atol = 1.0e-12)
+    return vectors_parallel(ℓ1.dir, ℓ2.dir; atol = atol)
 end
 
 """
@@ -249,29 +250,65 @@ end
     
 Cuts polygon `poly` with the line ``\ell``.
 
-Returns a copy of `poly` if ``\ell`` does not intersect `poly`.
+Keyword Arguments
+---
+- `keep_left`: should we create a polygon on the left side of the line? (currently no effect)
 """
-function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ; atol = 1.0e-12) where {T}
+function cut_poly_with_line(
+    poly::ClockwiseOrientedPolygon{T},
+    ℓ;
+    atol = 1.0e-12,
+    keep_left = true,
+) where {T}
     isect_pts = poly_line_intersections(poly, ℓ)
     if all(isnothing, isect_pts)
-        return copy(poly)
-    end
-    new_pts = SVector{2,T}[]
-    sizehint!(new_pts, num_vertices(poly) + 2)
-    for point ∈ Iterators.flatten(zip(edge_starts(poly), isect_pts))
-        isnothing(point) && continue
-        (!isempty(new_pts) && point == last(new_pts)) && continue
-        if (
-            point_in_right_half_plane(ℓ, point; atol = atol) &&
-            point_inside(poly, point; atol = atol)
-        )
-            push!(new_pts, point)
+        if point_in_right_half_plane(ℓ, first(edge_starts(poly)); atol = atol)
+            return (nothing, make_closed!(collect(edge_starts(poly))))
+        else
+            return (make_closed!(collect(edge_starts(poly))), nothing)
         end
     end
-    if first(new_pts) == last(new_pts)
-        return ClosedPolygon(new_pts)
+    new_pts_right = Point{T}[]
+    new_pts_left = Point{T}[]
+    sizehint!(new_pts_right, num_vertices(poly) + 2)
+    sizehint!(new_pts_left, num_vertices(poly) + 2)
+    for point ∈ Iterators.flatten(zip(edge_starts(poly), isect_pts))
+        isnothing(point) && continue
+        point_inside(poly, point; atol = atol) || continue
+        if point_in_right_half_plane(ℓ, point)
+            if (
+                isempty(new_pts_right) ||
+                !is_in_neighborhood(point, last(new_pts_right); atol = atol)
+            )
+                # point is inside poly, on right side of the line, AND not at the end of the list
+                push!(new_pts_right, point)
+            end
+        end
+        if point_in_left_half_plane(ℓ, point)
+            if (
+                isempty(new_pts_left) ||
+                !is_in_neighborhood(point, last(new_pts_left); atol = atol)
+            )
+                # point is inside poly, on left side of the line, AND not at the end of the list
+                push!(new_pts_left, point)
+            end
+        end
     end
-    return make_closed!(new_pts)
+    polyR = if isempty(new_pts_right)
+        nothing
+    elseif is_in_neighborhood(first(new_pts_right), last(new_pts_right); atol = atol)
+        ClosedPolygon(new_pts_right)
+    else
+        make_closed!(new_pts_right)
+    end
+    polyL = if isempty(new_pts_left)
+        nothing
+    elseif is_in_neighborhood(first(new_pts_left), last(new_pts_left); atol = atol)
+        ClosedPolygon(new_pts_left)
+    else
+        make_closed!(new_pts_left)
+    end
+    return (polyR, polyL)
 end
 
 function are_polygons_intersecting(poly1, poly2; atol = 1.0e-12)
@@ -292,9 +329,38 @@ function poly_intersection(poly1, poly2; atol = 1.0e-12)
     end
     res = poly1
     for ℓ ∈ edge_lines(poly2)
-        res = cut_poly_with_line(res, ℓ; atol = atol)
+        (res, _) = cut_poly_with_line(res, ℓ; atol = atol)
     end
     return res
+end
+
+function polygons_equal(
+    p1::ClockwiseOrientedPolygon,
+    p2::ClockwiseOrientedPolygon;
+    atol = 1.0e-12,
+)
+    if num_vertices(p1) != num_vertices(p2)
+        return false
+    end
+    s1 = first(edge_starts(p1))
+    idx = findfirst(pt -> is_in_neighborhood(s1, pt; atol = atol), edge_starts(p2))
+    if isnothing(idx)
+        return false
+    end
+    i = 1
+    for j ∈ idx:length(edge_starts(p2))
+        if !is_in_neighborhood(edge_starts(p1)[i], edge_starts(p2)[j]; atol = atol)
+            return false
+        end
+        i += 1
+    end
+    for j ∈ 1:(idx-1)
+        if !is_in_neighborhood(edge_starts(p1)[i], edge_starts(p2)[j]; atol = atol)
+            return false
+        end
+        i += 1
+    end
+    return true
 end
 
 """
@@ -335,7 +401,7 @@ function edge_starts(p::SClosedPolygon)
 end
 
 function edge_ends(p::SClosedPolygon{NV}) where {NV}
-    return p.pts[SVector(ntuple(i->i+1, NV-1)..., 1)]
+    return p.pts[SVector(ntuple(i -> i + 1, NV - 1)..., 1)]
 end
 
 end
