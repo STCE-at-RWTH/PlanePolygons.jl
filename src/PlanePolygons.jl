@@ -148,14 +148,12 @@ function point_in_left_half_plane(ℓ::Line, pt; atol = 1.0e-10)
 end
 
 """
-    point_on_line(p0, dir, point; atol=1.0e-12)
+    point_on_line(ℓ, point; atol=1.0e-12)
 
 Test if the point `pt` is on the line `ℓ`.
 """
 function point_on_line(ℓ::Line, pt; atol = 1.0e-12)
-    v1 = pt - ℓ.p
-    v2 = v1 ./ ℓ.dir
-    return isapprox(v2[1], v2[2]; atol = atol)
+    return vectors_parallel(pt - ℓ.p, ℓ.dir; atol=atol)
 end
 
 """

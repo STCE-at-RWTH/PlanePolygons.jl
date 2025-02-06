@@ -14,6 +14,7 @@ using PlanePolygons
 
     l1 = Line(p1, p3)
     l2 = Line(p2, Vec(1.0, -1.0))
+    l3 = Line(Point(-2., 0.), p4)
 
     @testset "Point" begin
         # are points points
@@ -46,6 +47,9 @@ using PlanePolygons
         @test point_in_right_half_plane(l1, Point(0., 0.))
         @test point_in_left_half_plane(l1, Point(0., 0.))
 
+        @test point_on_line(l1, Point(0.0, 0.0))
+        @test point_on_line(l1, Point(10., 10.))
+        @test point_on_line(l3, Point(-0.75, 0.))
     end
 
     @testset "SPoly" begin
