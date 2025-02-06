@@ -312,11 +312,15 @@ function cut_poly_with_line(
 end
 
 function are_polygons_intersecting(poly1, poly2; atol = 1.0e-12)
-    for ℓ ∈ edge_lines(poly1)
-        # all points in poly1 on on the right side of u + sv
-        # which means there is a separating axis iff all of the points
-        # in poly2 are on the left side of u+sv
-        if all(pt -> !point_in_right_half_plane(ℓ, pt; atol = atol), edge_starts(poly2))
+    for (ℓ1, ℓ2) ∈ zip(edge_lines(poly1), edge_lines(poly2))
+        # separating axis theorem
+        # the separating axis is normal to one of the sides of the polygon
+        # test if the sides of each polygon are separating axes
+        # return false if one of them is
+        if all(pt -> !point_in_right_half_plane(ℓ1, pt; atol = atol), edge_starts(poly2))
+            return false
+        end
+        if all(pt -> !point_in_right_half_plane(ℓ2, pt; atol = atol), edge_starts(poly1))
             return false
         end
     end

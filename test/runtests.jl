@@ -93,6 +93,7 @@ using PlanePolygons
         @test all(Base.Fix1(point_inside, poly2), edge_starts(poly2))
     end
 
+
     @testset "Cutting" begin
         poly = SClosedPolygon(p1, p2, p3, p4)
         poly1 = SClosedPolygon(p1, p3, p4)
