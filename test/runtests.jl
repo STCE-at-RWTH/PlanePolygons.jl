@@ -53,38 +53,38 @@ using PlanePolygons
     end
 
     @testset "SPoly" begin
-        poly1 = SClosedPolygon(p1, p2, p4)
-        poly1a = SClosedPolygon(p4, p1, p2)
+        tri_low = SClosedPolygon(p1, p2, p4)
+        tri_up = SClosedPolygon(p4, p1, p2)
         poly2 = SClosedPolygon(p1, p3, p4)
         poly3 = SClosedPolygon(p1, p2, p5)
         poly4 = SClosedPolygon(p1, p2, p3, p4)
-        @test num_vertices(poly1) == 3
+        @test num_vertices(tri_low) == 3
         @test num_vertices(poly4) == 4
-        @test !polygons_equal(poly1, poly4)
-        @test polygons_equal(poly1, poly1a)
-        @test !polygons_equal(poly1, poly2)
-        @test poly_area(poly1) ≈ 0.5
-        @test point_inside(poly1, Point(0.25, 0.25))
-        @test are_polygons_intersecting(poly1, poly2)
+        @test !polygons_equal(tri_low, poly4)
+        @test polygons_equal(tri_low, tri_up)
+        @test !polygons_equal(tri_low, poly2)
+        @test poly_area(tri_low) ≈ 0.5
+        @test point_inside(tri_low, Point(0.25, 0.25))
+        @test are_polygons_intersecting(tri_low, poly2)
     end
 
     @testset "Poly" begin
         using PlanePolygons: make_closed!
         
-        poly1 = make_closed!([p1, p2, p4])
-        poly1a = make_closed!([p2, p4, p1])
+        tri_low = make_closed!([p1, p2, p4])
+        tri_up = make_closed!([p2, p4, p1])
         poly1b = make_closed!([p4, p1, p2])
-        @test polygons_equal(poly1, poly1a)
-        @test polygons_equal(poly1, poly1b)
-        @test polygons_equal(poly1a, poly1b)
+        @test polygons_equal(tri_low, tri_up)
+        @test polygons_equal(tri_low, poly1b)
+        @test polygons_equal(tri_up, poly1b)
 
         poly2 = make_closed!([p1, p3, p4])
         poly3 = make_closed!([p1, p2, p3])
         
-        @test num_vertices(poly1) == 3
-        @test poly_area(poly1) ≈ 0.5
-        @test point_inside(poly1, Point(0.25, 0.25))
-        @test are_polygons_intersecting(poly1, poly2)
+        @test num_vertices(tri_low) == 3
+        @test poly_area(tri_low) ≈ 0.5
+        @test point_inside(tri_low, Point(0.25, 0.25))
+        @test are_polygons_intersecting(tri_low, poly2)
         pts = (
             begin
                 x = 0.02 + 0.95*rand(Float64)
@@ -99,19 +99,26 @@ using PlanePolygons
 
 
     @testset "Cutting" begin
-        poly = SClosedPolygon(p1, p2, p3, p4)
-        poly1 = SClosedPolygon(p1, p3, p4)
-        poly1a = SClosedPolygon(p1, p2, p3)
-        (poly2r, poly2l) = cut_poly_with_line(poly, l1)
-        @test polygons_equal(poly1, poly2r)
-        @test polygons_equal(poly1a, poly2l)
+        sqr = SClosedPolygon(p1, p2, p3, p4)
+        tri_low = SClosedPolygon(p1, p3, p4)
+        tri_up = SClosedPolygon(p1, p2, p3)
+        cut_poly_1 = cut_poly_with_line(sqr, l1)
+        reverse_l1 = Line(l1.p, -1 * l1.dir)
+        @test polygons_equal(tri_low, cut_poly_1)
+        poly2l = cut_poly_with_line(sqr, reverse_l1)
+        @test polygons_equal(tri_up, poly2l)
     end
 
     @testset "Intersection" begin
         big = SClosedPolygon(Point(0.,0.), Point(0., 2.), Point(2., 2.), Point(2., 0.))
+        low = SClosedPolygon(Point(0., 0.), Point(0., 2.), Point(0, -1.0))
+        low_eps = SClosedPolygon(map(pt->pt+Vec(0.0, 1.0e-1), low.pts))
+        @show low_eps
         tall = SClosedPolygon(Point(0.5, -0.5), Point(0.5, 0.5), Point(1.0, 1.0), Point(1.0, -0.5))
         res = SClosedPolygon(Point(0.5, 0.), Point(0.5, 0.5), Point(1.0, 1.0), Point(1.0, 0.))
         @test are_polygons_intersecting(big, tall)
+        @test !are_polygons_intersecting(big, low)
+        @test are_polygons_intersecting(big, low_eps)
         small = poly_intersection(big, tall)
         @test polygons_equal(res, small)
     end

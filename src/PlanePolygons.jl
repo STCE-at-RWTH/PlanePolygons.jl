@@ -35,7 +35,7 @@ export num_vertices,
 
 Alias for SVector{2, T}. Semantically represents a point in 2-D space.
 """
-Point{T} = SVector{2,T}
+const Point{T} = SVector{2,T}
 
 function is_in_neighborhood(p0::Point, p1::Point; atol = 1.0e-12)
     return isapprox(norm(p1 - p0), 0; atol = atol)
@@ -46,7 +46,7 @@ end
 
 Alias for SVector{2, T}. Semantically represents a vector in 2-D space.
 """
-Vec{T} = SVector{2,T}
+const Vec{T} = SVector{2,T}
 
 """
     vectors_parallel(u::Vec, v::Vec; atol=1.0e-12)
@@ -125,15 +125,25 @@ function line_intersect(p::Point, q::Vec, u::Point, v::Vec; atol = 1.0e-12)
     return line_intersect(Line(p, q), Line(u, v); atol = atol)
 end
 
+function _right_half_plane(ℓ::Line, pt; atol = 1.0e-12)
+    v1 = right_normal(ℓ) ⋅ pt
+    v2 = right_normal(ℓ) ⋅ ℓ.p
+    return (v1, v2)
+end
+
 """
     point_in_right_half_plane(ℓ, pt; atol=1.0e-12)
 
 Test if the point `point` is to the right of the hyperplane defined by the line `ℓ`.
 """
-function point_in_right_half_plane(ℓ::Line, pt; atol = 1.0e-10)
-    v1 = right_normal(ℓ) ⋅ pt
-    v2 = right_normal(ℓ) ⋅ ℓ.p
-    return v1 > v2 || isapprox(v1, v2; atol = atol)
+function point_in_right_half_plane(ℓ::Line, pt; atol = 1.0e-12)
+    (v1, v2) = _right_half_plane(ℓ, pt; atol = atol)
+    return v1 > v2 || isapprox(v1 - v2, 0; atol = atol)
+end
+
+function point_in_right_half_plane_strict(ℓ::Line, pt; atol = 1.0e-12)
+    (v1, v2) = _right_half_plane(ℓ, pt; atol = atol)
+    return v1 > v2 && !isapprox(v1 - v2, 0; atol = atol)
 end
 
 """
@@ -141,10 +151,14 @@ end
 
 Test if the point `point` is to the left of the hyperplane defined by the line `ℓ`.
 """
-function point_in_left_half_plane(ℓ::Line, pt; atol = 1.0e-10)
+function point_in_left_half_plane(ℓ::Line, pt; atol = 1.0e-12)
     return (
         point_on_line(ℓ, pt; atol = atol) || !point_in_right_half_plane(ℓ, pt; atol = atol)
     )
+end
+
+function point_in_left_half_plane_strict(ℓ::Line, pt; atol = 1.0e-12)
+    return !point_in_right_half_plane(ℓ, pt; atol = atol)
 end
 
 """
@@ -153,7 +167,7 @@ end
 Test if the point `pt` is on the line `ℓ`.
 """
 function point_on_line(ℓ::Line, pt; atol = 1.0e-12)
-    return vectors_parallel(pt - ℓ.p, ℓ.dir; atol=atol)
+    return vectors_parallel(pt - ℓ.p, ℓ.dir; atol = atol)
 end
 
 """
@@ -246,30 +260,22 @@ end
 """
     cut_poly_with_line(poly, ℓ; atol)
     
-Cuts polygon `poly` with the line ``\ell``.
+Cuts polygon `poly` with the line ``\ell``. Keeps the polygon on the _right_ side of the line.
 
-Keyword Arguments
----
-- `keep_left`: should we create a polygon on the left side of the line? (currently no effect)
+Returns the input polygon if the line does not cut the polygon.
 """
-function cut_poly_with_line(
-    poly::ClockwiseOrientedPolygon{T},
-    ℓ;
-    atol = 1.0e-12,
-    keep_left = true,
-) where {T}
+function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ; atol = 1.0e-12) where {T}
     isect_pts = poly_line_intersections(poly, ℓ)
-    if all(isnothing, isect_pts)
-        if point_in_right_half_plane(ℓ, first(edge_starts(poly)); atol = atol)
-            return (nothing, make_closed!(collect(edge_starts(poly))))
-        else
-            return (make_closed!(collect(edge_starts(poly))), nothing)
-        end
+    yields_no_new_poly = all(isect_pts) do pt
+        isnothing(pt) && return true
+        point_inside(poly, pt; atol = atol) && return false
+        return true
+    end
+    if yields_no_new_poly
+        return poly
     end
     new_pts_right = Point{T}[]
-    new_pts_left = Point{T}[]
     sizehint!(new_pts_right, num_vertices(poly) + 2)
-    sizehint!(new_pts_left, num_vertices(poly) + 2)
     for point ∈ Iterators.flatten(zip(edge_starts(poly), isect_pts))
         isnothing(point) && continue
         point_inside(poly, point; atol = atol) || continue
@@ -282,15 +288,6 @@ function cut_poly_with_line(
                 push!(new_pts_right, point)
             end
         end
-        if point_in_left_half_plane(ℓ, point)
-            if (
-                isempty(new_pts_left) ||
-                !is_in_neighborhood(point, last(new_pts_left); atol = atol)
-            )
-                # point is inside poly, on left side of the line, AND not at the end of the list
-                push!(new_pts_left, point)
-            end
-        end
     end
     polyR = if isempty(new_pts_right)
         nothing
@@ -299,22 +296,36 @@ function cut_poly_with_line(
     else
         make_closed!(new_pts_right)
     end
-    polyL = if isempty(new_pts_left)
-        nothing
-    elseif is_in_neighborhood(first(new_pts_left), last(new_pts_left); atol = atol)
-        ClosedPolygon(new_pts_left)
-    else
-        make_closed!(new_pts_left)
+    return polyR
+end
+
+# 
+
+function _check_right_separating_axis(ax, poly; atol = 1.0e-12)
+    # separating axis theorem
+    # the separating hyperplane is parallel to one of the sides of the polygon
+    # test if the sides of each polygon are separating hyperplanes
+    # return false if one of them is
+    not_separating = any(edge_starts(poly)) do pt
+        return point_in_left_half_plane_strict(ax, pt; atol = atol)
     end
-    return (polyR, polyL)
+    if not_separating
+        return false
+    end
+    # make sure none of the edges of poly coincide with the proposed separating axis
+    return all(edge_lines(poly))
+
 end
 
 function are_polygons_intersecting(poly1, poly2; atol = 1.0e-12)
-    for (ℓ1, ℓ2) ∈ zip(edge_lines(poly1), edge_lines(poly2))
-        # separating axis theorem
-        # the separating axis is normal to one of the sides of the polygon
-        # test if the sides of each polygon are separating axes
-        # return false if one of them is
+    # separating axis theorem
+    # the separating axis is normal to one of the sides of the polygon
+    # test if the sides of each polygon are separating axes
+    # return false if one of them is
+    for ℓ ∈ edge_lines(poly2)
+    end
+    return true
+    for (ℓ1, ℓ2) ∈ Iterators.flatten(zip(edge_lines(poly1), edge_lines(poly2)))
         if all(pt -> !point_in_right_half_plane(ℓ1, pt; atol = atol), edge_starts(poly2))
             return false
         end
@@ -325,18 +336,18 @@ function are_polygons_intersecting(poly1, poly2; atol = 1.0e-12)
     return true
 end
 
+"""
+    poly_intersection(poly1, poly2; atol=1.0e-12)
+
+Returns the portion of `poly1` also contained by `poly2`.
+"""
 function poly_intersection(poly1, poly2; atol = 1.0e-12)
     if !are_polygons_intersecting(poly1, poly2; atol = atol)
         return nothing
     end
     res = poly1
     for ℓ ∈ edge_lines(poly2)
-        (a, b) = cut_poly_with_line(res, ℓ; atol = atol)
-        if isnothing(a)
-            res = b
-        else
-            res = a
-        end
+        res = cut_poly_with_line(res, ℓ; atol = atol)
     end
     return res
 end
