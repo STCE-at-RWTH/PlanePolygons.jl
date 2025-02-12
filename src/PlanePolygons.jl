@@ -10,6 +10,7 @@ export Line,
     point_in_right_half_plane,
     point_in_left_half_plane,
     point_on_line,
+    lines_coincident,
     line_intersect,
     lines_parallel
 
@@ -29,6 +30,14 @@ export num_vertices,
     are_polygons_intersecting,
     cut_poly_with_line,
     polygons_equal
+
+export unpack_polygon_tangent
+
+"""
+
+Inserted by extensions if AD is available.
+"""
+function unpack_polygon_tangent end
 
 """
     Point{T}
@@ -54,10 +63,10 @@ const Vec{T} = SVector{2,T}
 Test if vectors `u` and `v` are parallel up to `atol`.
 """
 function vectors_parallel(u::Vec, v::Vec; atol = 1.0e-12)
-    scalarprod = u ⋅ v
-    normprod = norm(u) * norm(v)
-    return isapprox(scalarprod, normprod; atol = atol) ||
-           isapprox(scalarprod, -1 * normprod; atol = atol)
+    scalarprod2 = (u ⋅ v)^2
+    norm2prod = (u[1]^2 + u[2]^2) * (v[1]^2 + v[2]^2)
+    return isapprox(scalarprod2, norm2prod; atol = atol) ||
+           isapprox(scalarprod2, -1 * norm2prod; atol = atol)
 end
 
 """
@@ -89,12 +98,18 @@ struct Line{T}
     end
 end
 
+function lines_coincident(ℓ1::Line, ℓ2::Line; atol = 1.0e-12)
+    return point_on_line(ℓ1, ℓ2.p; atol = atol) &&
+           vectors_parallel(ℓ1.dir, ℓ2.dir; atol = atol)
+end
+
 right_normal(ℓ::Line{T}) where {T} = Vec{T}(ℓ.dir[2], -ℓ.dir[1])
 left_normal(ℓ::Line{T}) where {T} = Vec{T}(-ℓ.dir[2], ℓ.dir[1])
 
 """
-    line_intersect(p, q, u, v; atol=1.0e-12)
+    line_intersect(p, q, u, v; atol=1.0e-12); atol=atol
 
+end
 Computes the point of intersection between the lines ``\ell_1`` and ``\ell_2``.
 
 Returns `nothing` if there is no intersection. May throw a SingularException.
@@ -110,8 +125,9 @@ function line_intersect(ℓ1, ℓ2; atol = 1.0e-12)
 end
 
 """
-    line_intersect(p, q, u, v; atol=1.0e-12)
+    line_intersect(p, q, u, v; atol=1.0e-12); atol=atol
 
+end
 Computes the point of intersection between the lines
 ``
     \vec p + t\vec q
@@ -168,6 +184,15 @@ Test if the point `pt` is on the line `ℓ`.
 """
 function point_on_line(ℓ::Line, pt; atol = 1.0e-12)
     return vectors_parallel(pt - ℓ.p, ℓ.dir; atol = atol)
+end
+
+function projected_component(ℓ::Line, pt)
+    v = pt - ℓ.p
+    return (v ⋅ ℓ.dir) / (ℓ.dir ⋅ ℓ.dir)
+end
+
+function project_point_onto(ℓ::Line, pt)
+    return ℓ.p + ℓ.dir * projected_component(ℓ, pt)
 end
 
 """
@@ -301,39 +326,57 @@ end
 
 # 
 
-function _check_right_separating_axis(ax, poly; atol = 1.0e-12)
-    # separating axis theorem
-    # the separating hyperplane is parallel to one of the sides of the polygon
-    # test if the sides of each polygon are separating hyperplanes
-    # return false if one of them is
-    not_separating = any(edge_starts(poly)) do pt
-        return point_in_left_half_plane_strict(ax, pt; atol = atol)
+"""
+Check if `poly` is fully on the left side of `ax` and that `ax` does not coincide with any sides of `poly`
+
+This is in order to solve the case of polygons that share an edge but have an intersection of size zero.
+
+Returns 'true' if the above conditions are met.
+"""
+function _is_left_separating_axis(ax, poly; atol = 1.0e-12)
+    all_left = all(edge_starts(poly)) do pt
+        return point_in_left_half_plane(ax, pt; atol = atol)
     end
-    if not_separating
+    if !all_left
         return false
     end
     # make sure none of the edges of poly coincide with the proposed separating axis
-    return all(edge_lines(poly))
+    return all(edge_lines(poly)) do ℓ
+        !lines_coincident(ℓ, ax; atol = atol)
+    end
+end
 
+function _poly_image(ℓ::Line, poly)
+    return extrema(edge_starts(poly)) do pt
+        projected_component(ℓ, pt)
+    end
+end
+
+function _separating_axis(n::Vec, poly1, poly2; atol = 1.0e-12)
+    ℓ = Line(Point(0.0, 0.0), Point(-n[2], n[1]))
+    p1_L, p1_R = _poly_image(ℓ, poly1)
+    p2_L, p2_R = _poly_image(ℓ, poly2)
+    # @show ℓ, (p1_L, p1_R), (p2_L, p2_R)
+    if p1_R < p2_L || isapprox(p1_R, p2_L; atol = atol)
+        # largest projection of p1 is less than smallest projection of p2 
+        # AND they are not approx equal
+        return true
+    elseif p2_R < p1_L || isapprox(p1_L, p2_R; atol = atol)
+        # largest projection of p2 is less than smallest projection of p1
+        # AND they are not approx equal
+        return true
+    else
+        # there is no gap between the projected intervals
+        return false
+    end
 end
 
 function are_polygons_intersecting(poly1, poly2; atol = 1.0e-12)
-    # separating axis theorem
-    # the separating axis is normal to one of the sides of the polygon
-    # test if the sides of each polygon are separating axes
-    # return false if one of them is
-    for ℓ ∈ edge_lines(poly2)
-    end
-    return true
-    for (ℓ1, ℓ2) ∈ Iterators.flatten(zip(edge_lines(poly1), edge_lines(poly2)))
-        if all(pt -> !point_in_right_half_plane(ℓ1, pt; atol = atol), edge_starts(poly2))
-            return false
-        end
-        if all(pt -> !point_in_right_half_plane(ℓ2, pt; atol = atol), edge_starts(poly1))
-            return false
-        end
-    end
-    return true
+    has_separating_axis = any(
+        n -> _separating_axis(n, poly1, poly2; atol = atol),
+        Iterators.flatten((outward_edge_normals(poly1), outward_edge_normals(poly2))),
+    )
+    return !has_separating_axis
 end
 
 """

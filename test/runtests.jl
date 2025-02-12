@@ -2,10 +2,9 @@ using LinearAlgebra
 using StaticArrays
 using Test
 
-
 using PlanePolygons
 
-@testset verbose = true "PlanePolygons.jl" begin
+@testset "PlanePolygons.jl" begin
     p1 = Point(0.0, 0.0)
     p2 = Point(0.0, 1.0)
     p3 = Point(1.0, 1.0)
@@ -14,42 +13,49 @@ using PlanePolygons
 
     l1 = Line(p1, p3)
     l2 = Line(p2, Vec(1.0, -1.0))
-    l3 = Line(Point(-2., 0.), p4)
+    l3 = Line(Point(-2.0, 0.0), p4)
 
-    @testset "Point" begin
+    @testset "Point/Neighborhood" begin
         # are points points
         @test is_in_neighborhood(p1, p1)
         @test !is_in_neighborhood(p1, p2)
     end
 
-    @testset "Vec" begin
+    @testset "Vec/Parallel" begin
         # are vectors vectors
         @test vectors_parallel(Vec(1.0, 1.0), Vec(2.0, 2.0))
         @test vectors_parallel(Vec(1.0, 2.0), Vec(-1.0, -2.0))
     end
 
-    @testset "Line" begin
+    @testset "Line/Properties" begin
         @test_throws ArgumentError Line(p1, p1)
         @test point_on_line(l1, p1)
+
+        # are normals normal?
+        @test right_normal(l1) ⋅ l1.dir ≈ 0
+        @test left_normal(l1) ⋅ l1.dir ≈ 0
+
+        @test point_in_right_half_plane(l2, Point(-1.0, -1.0))
+        @test point_in_left_half_plane(l2, Point(1.0, 1.0))
+
+        @test point_in_right_half_plane(l1, Point(0.0, 0.0))
+        @test point_in_left_half_plane(l1, Point(0.0, 0.0))
+
+        @test point_on_line(l1, Point(0.0, 0.0))
+        @test point_on_line(l1, Point(10.0, 10.0))
+        @test point_on_line(l3, Point(-0.75, 0.0))
+
+        l4 = Line(Point(40.0, 40.0), Vec(-1.0, -1.0))
+        @test lines_coincident(l1, l4)
+        @test !lines_coincident(l1, l2)
+    end
+
+    @testset "Line/Intersect" begin
         # do lines intersect?
         A = line_intersect(l1, l2)
         @test !isnothing(A)
         @test is_in_neighborhood(p5, A)
         @test isnothing(line_intersect(Line(p1, p5), Line(p2, p3)))
-        
-        # are normals normal?
-        @test right_normal(l1)⋅l1.dir ≈ 0
-        @test left_normal(l1)⋅l1.dir ≈ 0
-
-        @test point_in_right_half_plane(l2, Point(-1., -1.))
-        @test point_in_left_half_plane(l2, Point(1., 1.))
-
-        @test point_in_right_half_plane(l1, Point(0., 0.))
-        @test point_in_left_half_plane(l1, Point(0., 0.))
-
-        @test point_on_line(l1, Point(0.0, 0.0))
-        @test point_on_line(l1, Point(10., 10.))
-        @test point_on_line(l3, Point(-0.75, 0.))
     end
 
     @testset "SPoly" begin
@@ -70,7 +76,7 @@ using PlanePolygons
 
     @testset "Poly" begin
         using PlanePolygons: make_closed!
-        
+
         tri_low = make_closed!([p1, p2, p4])
         tri_up = make_closed!([p2, p4, p1])
         poly1b = make_closed!([p4, p1, p2])
@@ -80,14 +86,14 @@ using PlanePolygons
 
         poly2 = make_closed!([p1, p3, p4])
         poly3 = make_closed!([p1, p2, p3])
-        
+
         @test num_vertices(tri_low) == 3
         @test poly_area(tri_low) ≈ 0.5
         @test point_inside(tri_low, Point(0.25, 0.25))
         @test are_polygons_intersecting(tri_low, poly2)
         pts = (
             begin
-                x = 0.02 + 0.95*rand(Float64)
+                x = 0.02 + 0.95 * rand(Float64)
                 y = rand(Float64) * x
                 Point(x, y)
             end for i = 1:1000
@@ -96,7 +102,6 @@ using PlanePolygons
         @test !any(Base.Fix1(point_inside, poly3), pts)
         @test all(Base.Fix1(point_inside, poly2), edge_starts(poly2))
     end
-
 
     @testset "Cutting" begin
         sqr = SClosedPolygon(p1, p2, p3, p4)
@@ -110,16 +115,79 @@ using PlanePolygons
     end
 
     @testset "Intersection" begin
-        big = SClosedPolygon(Point(0.,0.), Point(0., 2.), Point(2., 2.), Point(2., 0.))
-        low = SClosedPolygon(Point(0., 0.), Point(0., 2.), Point(0, -1.0))
-        low_eps = SClosedPolygon(map(pt->pt+Vec(0.0, 1.0e-1), low.pts))
-        @show low_eps
-        tall = SClosedPolygon(Point(0.5, -0.5), Point(0.5, 0.5), Point(1.0, 1.0), Point(1.0, -0.5))
-        res = SClosedPolygon(Point(0.5, 0.), Point(0.5, 0.5), Point(1.0, 1.0), Point(1.0, 0.))
-        @test are_polygons_intersecting(big, tall)
-        @test !are_polygons_intersecting(big, low)
-        @test are_polygons_intersecting(big, low_eps)
-        small = poly_intersection(big, tall)
-        @test polygons_equal(res, small)
+        big_square = SClosedPolygon(
+            Point(0.0, 0.0),
+            Point(0.0, 2.0),
+            Point(2.0, 2.0),
+            Point(2.0, 0.0),
+        )
+        big_octagon = SClosedPolygon(
+            Point(0.0, 0.0),
+            Point(-1.0, 1.0),
+            Point(-1.0, 2.0),
+            Point(0.0, 3.0),
+            Point(2.0, 3.0),
+            Point(3.0, 2.0),
+            Point(3.0, 1.0),
+            Point(2.0, 0.0),
+        )
+        far_away = map(p -> p + Vec(100.0, 100.0), big_square.pts) |> SClosedPolygon
+        tri_1 = SClosedPolygon(Point(0.0, 0.0), Point(2.0, 0.0), Point(0, -1.0))
+        tri_1_eps = SClosedPolygon(map(pt -> pt + Vec(0.0, 1.0e-10), tri_1.pts))
+        tri_2 = SClosedPolygon(Point(0.0, 1.0), Point(-1.0, 0.0), Point(-1.0, 2))
+        tri_2_eps = map(pt -> pt + Vec(1.0e-6, 0.0), tri_2.pts) |> SClosedPolygon
+        tri_3 = SClosedPolygon(Point(0.0, 0.0), Point(-1.0, 0.0), Point(-0.5, -1.0))
+        tall_rectangle = SClosedPolygon(
+            Point(0.5, -0.5),
+            Point(0.5, 0.5),
+            Point(1.0, 1.0),
+            Point(1.0, -0.5),
+        )
+        big_tall_expected = SClosedPolygon(
+            Point(0.5, 0.0),
+            Point(0.5, 0.5),
+            Point(1.0, 1.0),
+            Point(1.0, 0.0),
+        )
+        @testset "Easy Cases" begin
+            @test are_polygons_intersecting(big_square, tall_rectangle)
+            @test are_polygons_intersecting(tall_rectangle, big_square)
+            @test !are_polygons_intersecting(big_square, far_away)
+            @test !are_polygons_intersecting(far_away, big_square)
+            @test are_polygons_intersecting(big_square, big_octagon)
+            @test are_polygons_intersecting(big_octagon, big_octagon)
+            small = poly_intersection(big_square, tall_rectangle)
+            @test polygons_equal(big_tall_expected, small)
+        end
+        @testset "Share Edge" begin
+            @test !are_polygons_intersecting(big_square, tri_1)
+            @test !are_polygons_intersecting(big_octagon, tri_1)
+            @test are_polygons_intersecting(big_square, tri_1_eps)
+        end
+
+        @testset "Share Point" begin
+            @test !are_polygons_intersecting(big_square, tri_2)
+            @test !are_polygons_intersecting(tri_2, big_square)
+            @test are_polygons_intersecting(big_square, tri_2_eps)
+            @test !are_polygons_intersecting(tri_1, tri_3)
+            @test !are_polygons_intersecting(tri_3, big_square)
+            @test !are_polygons_intersecting(tri_3, big_octagon)
+        end
     end
+end
+
+@testset "MooncakeExt" begin
+    using Mooncake
+    poly =
+        SClosedPolygon(Point(0.0, 0.0), Point(0.0, 1.0), Point(1.0, 1.0), Point(1.0, 0.0))
+    cache = Mooncake.prepare_gradient_cache(poly_area, poly)
+    (res, tan) = Mooncake.value_and_gradient!!(cache, poly_area, poly)
+    @test tan[1] == Mooncake.NoTangent()
+    s = unpack_polygon_tangent(tan[2])
+    @test res == 1.0
+    @test length(s) == num_vertices(poly)
+    @test s[1] == [-0.5, -0.5]
+    @test s[2] == [-0.5, 0.5]
+    @test s[3] == [0.5, 0.5]
+    @test s[4] == [0.5, -0.5]
 end
