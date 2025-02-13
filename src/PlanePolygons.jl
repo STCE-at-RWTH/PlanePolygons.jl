@@ -14,7 +14,8 @@ export Line,
     line_intersect,
     lines_parallel
 
-export ClockwiseOrientedPolygon, SClosedPolygon, ClosedPolygon
+export ClockwiseOrientedPolygon, SizedClockwiseOrientedPolygon
+export MClosedPolygon, SClosedPolygon, ClosedPolygon
 export num_vertices,
     edge_starts,
     edge_ends,
@@ -385,7 +386,11 @@ end
 
 Returns the portion of `poly1` also contained by `poly2`.
 """
-function poly_intersection(poly1::ClockwiseOrientedPolygon{T}, poly2::ClockwiseOrientedPolygon{T}; atol = 1.0e-12) where {T}
+function poly_intersection(
+    poly1::ClockwiseOrientedPolygon{T},
+    poly2::ClockwiseOrientedPolygon{T};
+    atol = 1.0e-12,
+) where {T}
     if !are_polygons_intersecting(poly1, poly2; atol = atol)
         return make_closed!([Point(T(NaN), T(NaN))])
     end
@@ -443,12 +448,14 @@ function make_closed!(pts)
     return ClosedPolygon(pts)
 end
 
+abstract type SizedClockwiseOrientedPolygon{NV,T} <: ClockwiseOrientedPolygon{T} end
+
 """
     SClosedPolygon{NV, T}
 
 Closed, clockwise oriented polygon with a fixed number of vertices.
 """
-struct SClosedPolygon{NV,T} <: ClockwiseOrientedPolygon{T}
+struct SClosedPolygon{NV,T} <: SizedClockwiseOrientedPolygon{NV,T}
     pts::SVector{NV,Point{T}}
 end
 
@@ -456,14 +463,47 @@ function SClosedPolygon(pts::Vararg{Point})
     return SClosedPolygon(SVector(pts...))
 end
 
-num_vertices(::SClosedPolygon{NV}) where {NV} = NV
+function SClosedPolygon(data::SVector{TWONV,T}) where {TWONV,T}
+    NV = TWONV ÷ 2
+    return SClosedPolygon(ntuple(i -> Point(data[2*i-1], data[2*i]), NV)...)
+end
 
-function edge_starts(p::SClosedPolygon)
+struct MClosedPolygon{NV,T} <: SizedClockwiseOrientedPolygon{NV,T}
+    pts::MVector{NV,Point{T}}
+end
+
+function MClosedPolygon(pts::Vararg{Point})
+    return MClosedPolygon(MVector(pts...))
+end
+
+function MClosedPolygon(data::MVector{TWONV,T}) where {TWONV,T}
+    NV = TWONV ÷ 2
+    return MClosedPolygon(ntuple(i -> Point(data[2*i-1], data[2*i]), NV)...)
+end
+
+num_vertices(::SizedClockwiseOrientedPolygon{NV}) where {NV} = NV
+
+function edge_starts(p::SizedClockwiseOrientedPolygon)
     return p.pts
 end
 
-function edge_ends(p::SClosedPolygon{NV}) where {NV}
+function edge_ends(p::SizedClockwiseOrientedPolygon{NV}) where {NV}
     return p.pts[SVector(ntuple(i -> i + 1, NV - 1)..., 1)]
+end
+
+function _flatten(poly::ClockwiseOrientedPolygon{T}) where {T}
+    return reduce(vcat, edge_starts(poly))
+end
+
+function _flatten(poly::MClosedPolygon{NV,T}) where {NV,T}
+    return MVector{2 * NV,T}(reduce(vcat, edge_starts(poly)))
+end
+
+_reconstruct_polygon(data::SVector{TWONV,T}) where {TWONV,T} = SClosedPolygon(data)
+_reconstruct_polygon(data::MVector{TWONV,T}) where {TWONV,T} = MClosedPolygon(data)
+
+function _reconstruct_polygon(data::Vector{T}) where {T}
+    copy(reinterpret(Point{T}, data)) |> PlanePolygons.make_closed!
 end
 
 end
