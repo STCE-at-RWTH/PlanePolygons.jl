@@ -299,7 +299,10 @@ function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ; atol = 1.0e-
         return true
     end
     if yields_no_new_poly
-        return poly
+        if poly isa ClosedPolygon{T}
+            return poly
+        end
+        return make_closed!(poly.pts)
     end
     new_pts_right = Point{T}[]
     sizehint!(new_pts_right, num_vertices(poly) + 2)
@@ -317,7 +320,7 @@ function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ; atol = 1.0e-
         end
     end
     polyR = if isempty(new_pts_right)
-        make_closed!([Point(T(NaN), T(NaN))])
+        make_closed!(SVector(Point(T(NaN), T(NaN))))
     elseif is_in_neighborhood(first(new_pts_right), last(new_pts_right); atol = atol)
         ClosedPolygon(new_pts_right)
     else
@@ -443,9 +446,14 @@ num_vertices(p::ClosedPolygon) = length(p.pts) - 1
 edge_starts(p::ClosedPolygon) = @view p.pts[1:end-1]
 edge_ends(p::ClosedPolygon) = @view p.pts[2:end]
 
-function make_closed!(pts)
+function make_closed!(pts::Vector{Point{T}}) where {T}
     push!(pts, pts[1])
     return ClosedPolygon(pts)
+end
+
+function make_closed!(pts)
+    p = Vector(vcat(pts, @SVector [pts[1]]))
+    return ClosedPolygon(p)
 end
 
 abstract type SizedClockwiseOrientedPolygon{NV,T} <: ClockwiseOrientedPolygon{T} end
