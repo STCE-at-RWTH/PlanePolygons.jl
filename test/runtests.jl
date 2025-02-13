@@ -53,9 +53,9 @@ using PlanePolygons
     @testset "Line/Intersect" begin
         # do lines intersect?
         A = line_intersect(l1, l2)
-        @test !isnothing(A)
+        @test all(!isnan, A)
         @test is_in_neighborhood(p5, A)
-        @test isnothing(line_intersect(Line(p1, p5), Line(p2, p3)))
+        @test all(isnan, line_intersect(Line(p1, p5), Line(p2, p3)))
     end
 
     @testset "SPoly" begin

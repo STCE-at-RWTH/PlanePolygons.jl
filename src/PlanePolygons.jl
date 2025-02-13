@@ -112,11 +112,11 @@ left_normal(ℓ::Line{T}) where {T} = Vec{T}(-ℓ.dir[2], ℓ.dir[1])
 end
 Computes the point of intersection between the lines ``\ell_1`` and ``\ell_2``.
 
-Returns `nothing` if there is no intersection. May throw a SingularException.
+Returns `Point(NaN, NaN)` if there is no intersection. May throw a SingularException.
 """
-function line_intersect(ℓ1, ℓ2; atol = 1.0e-12)
+function line_intersect(ℓ1::Line{T}, ℓ2::Line{T}; atol = 1.0e-12) where {T}
     if vectors_parallel(ℓ1.dir, ℓ2.dir; atol = atol)
-        return nothing
+        return Point{T}(T(NaN), T(NaN))
     end
     d = ℓ2.p - ℓ1.p
     A = hcat(ℓ1.dir, -1 * ℓ2.dir)
@@ -248,6 +248,7 @@ function outward_edge_normals(poly::ClockwiseOrientedPolygon)
 end
 
 function point_inside(poly::ClockwiseOrientedPolygon, pt; atol = 1.0e-12)
+    all(isnan, pt) && return false
     return all(edge_lines(poly)) do ℓ
         point_in_right_half_plane(ℓ, pt; atol = atol)
     end
@@ -292,7 +293,7 @@ Returns the input polygon if the line does not cut the polygon.
 function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ; atol = 1.0e-12) where {T}
     isect_pts = poly_line_intersections(poly, ℓ)
     yields_no_new_poly = all(isect_pts) do pt
-        isnothing(pt) && return true
+        all(isnan, pt) && return true
         point_inside(poly, pt; atol = atol) && return false
         return true
     end
@@ -302,7 +303,7 @@ function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ; atol = 1.0e-
     new_pts_right = Point{T}[]
     sizehint!(new_pts_right, num_vertices(poly) + 2)
     for point ∈ Iterators.flatten(zip(edge_starts(poly), isect_pts))
-        isnothing(point) && continue
+        all(isnan, point) && continue
         point_inside(poly, point; atol = atol) || continue
         if point_in_right_half_plane(ℓ, point)
             if (
@@ -315,7 +316,7 @@ function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ; atol = 1.0e-
         end
     end
     polyR = if isempty(new_pts_right)
-        nothing
+        make_closed!([Point(T(NaN), T(NaN))])
     elseif is_in_neighborhood(first(new_pts_right), last(new_pts_right); atol = atol)
         ClosedPolygon(new_pts_right)
     else
@@ -384,9 +385,9 @@ end
 
 Returns the portion of `poly1` also contained by `poly2`.
 """
-function poly_intersection(poly1, poly2; atol = 1.0e-12)
+function poly_intersection(poly1::ClockwiseOrientedPolygon{T}, poly2::ClockwiseOrientedPolygon{T}; atol = 1.0e-12) where {T}
     if !are_polygons_intersecting(poly1, poly2; atol = atol)
-        return nothing
+        return make_closed!([Point(T(NaN), T(NaN))])
     end
     res = poly1
     for ℓ ∈ edge_lines(poly2)
