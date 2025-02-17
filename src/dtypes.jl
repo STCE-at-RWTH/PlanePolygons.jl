@@ -80,8 +80,8 @@ function ClosedPolygon(pts::AbstractArray{Point{T}}) where {T}
     return ClosedPolygon(collect(pts))
 end
 
-function ClosedPolygon(pts::AbstractArray{T}) where {T}
-    return ClosedPolygon([Point{T}(pts[i], pts[i+1]) for i = 1:2:length(data)])
+function ClosedPolygon(data::AbstractArray{T}) where {T}
+    return ClosedPolygon(reinterpret(Point{T}, data))
 end
 
 abstract type SizedClockwiseOrientedPolygon{NV,T} <: ClockwiseOrientedPolygon{T} end
@@ -104,7 +104,7 @@ end
 function SClosedPolygon(data::SVector{TWONV,T}) where {TWONV,T}
     NV = TWONV ÷ 2
     pts = SVector(ntuple(NV) do i
-        Point(data[2 * i -1], data[2*i])
+        Point(data[2 * i - 1], data[2*i])
     end)
     return SClosedPolygon(pts)
 end
@@ -122,7 +122,7 @@ struct MClosedPolygon{NV,T} <: SizedClockwiseOrientedPolygon{NV,T}
 end
 
 function MClosedPolygon(pts::Vararg{Point{T},N}) where {T,N}
-    return MClosedPolygon{N,T,N + 1}(MVector(pts...))
+    return MClosedPolygon{N,T}(MVector(pts...))
 end
 
 function MClosedPolygon(data::MVector{TWONV,T}) where {TWONV,T}
