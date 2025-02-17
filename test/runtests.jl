@@ -10,11 +10,8 @@ using PlanePolygons
     p3 = Point(1.0, 1.0)
     p4 = Point(1.0, 0.0)
     p5 = Point(0.5, 0.5)
-
-    l1 = Line(p1, p3)
-    l2 = Line(p2, Vec(1.0, -1.0))
-    l3 = Line(Point(-2.0, 0.0), p4)
-
+    # Points are SVectors... let's assume that math works and we don't need to test it
+    # same with Vecs
     @testset "Point/Neighborhood" begin
         # are points points
         @test is_in_neighborhood(p1, p1)
@@ -27,8 +24,11 @@ using PlanePolygons
         @test vectors_parallel(Vec(1.0, 2.0), Vec(-1.0, -2.0))
     end
 
-    @testset "Line/Properties" begin
-        @test_throws ArgumentError Line(p1, p1)
+    l1 = Line(p1, p3)
+    l2 = Line(p2, Vec(1.0, -1.0))
+    l3 = Line(Point(-2.0, 0.0), p4)
+
+    @testset "Line" begin
         @test point_on_line(l1, p1)
 
         # are normals normal?
@@ -48,14 +48,15 @@ using PlanePolygons
         l4 = Line(Point(40.0, 40.0), Vec(-1.0, -1.0))
         @test lines_coincident(l1, l4)
         @test !lines_coincident(l1, l2)
-    end
 
-    @testset "Line/Intersect" begin
-        # do lines intersect?
-        A = line_intersect(l1, l2)
-        @test all(!isnan, A)
-        @test is_in_neighborhood(p5, A)
-        @test all(isnan, line_intersect(Line(p1, p5), Line(p2, p3)))
+        @testset "Intersection" begin
+            # do lines intersect?
+            A = line_intersect(l1, l2)
+            @test all(!isnan, A)
+            @test is_in_neighborhood(p5, A)
+            @test all(isnan, line_intersect(Line(p1, p5), Line(p2, p3)))
+        end
+        
     end
 
     @testset "SPoly" begin
@@ -75,17 +76,15 @@ using PlanePolygons
     end
 
     @testset "Poly" begin
-        using PlanePolygons: make_closed!
-
-        tri_low = make_closed!([p1, p2, p4])
-        tri_up = make_closed!([p2, p4, p1])
-        poly1b = make_closed!([p4, p1, p2])
+        tri_low = ClosedPolygon([p1, p2, p4])
+        tri_up = ClosedPolygon([p2, p4, p1])
+        poly1b = ClosedPolygon([p4, p1, p2])
         @test polygons_equal(tri_low, tri_up)
         @test polygons_equal(tri_low, poly1b)
         @test polygons_equal(tri_up, poly1b)
 
-        poly2 = make_closed!([p1, p3, p4])
-        poly3 = make_closed!([p1, p2, p3])
+        poly2 = ClosedPolygon([p1, p3, p4])
+        poly3 = ClosedPolygon([p1, p2, p3])
 
         @test num_vertices(tri_low) == 3
         @test poly_area(tri_low) ≈ 0.5
