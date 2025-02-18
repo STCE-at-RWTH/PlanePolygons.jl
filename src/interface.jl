@@ -12,9 +12,9 @@ function is_in_neighborhood(p0::Point, p1::Point)
 end
 
 """
-    vectors_parallel(u::Vec, v::Vec; atol=1.0e-12)
+    vectors_parallel(u::Vec, v::Vec)
 
-Test if vectors `u` and `v` are parallel up to `atol`.
+Test if vectors `u` and `v` are parallel`.
 """
 function vectors_parallel(u::Vec, v::Vec)
     scalarprod2 = (u ⋅ v)^2
@@ -23,29 +23,88 @@ function vectors_parallel(u::Vec, v::Vec)
            isapprox(scalarprod2, -1 * norm2prod; atol = _HOW_CLOSE_IS_TOO_CLOSE)
 end
 
-function lines_coincident(ℓ1::Line, ℓ2::Line)
-    return point_on_line(ℓ1, ℓ2.p) && vectors_parallel(ℓ1.dir, ℓ2.dir)
+"""
+    point_on_line(ℓ, point; atol=1.0e-12)
+
+Test if the point `pt` is on the line `ℓ`.
+"""
+function is_other_point_on_line(ℓ, pt)
+    return vectors_parallel(pt - point_on(ℓ), direction_of(ℓ))
 end
 
-right_normal(ℓ::Line{T}) where {T} = Vec{T}(ℓ.dir[2], -ℓ.dir[1])
-left_normal(ℓ::Line{T}) where {T} = Vec{T}(-ℓ.dir[2], ℓ.dir[1])
-
 """
-    line_intersect(p, q, u, v; atol=1.0e-12); atol=atol
+    projected_component(ℓ, pt)
 
+What is the projected length from the base point of `ℓ` to the point `pt`?
+"""
+function projected_component(ℓ, pt)
+    v = pt - point_on(ℓ)
+    return (v ⋅ ℓ.dir) / (ℓ.dir ⋅ ℓ.dir)
 end
-Computes the point of intersection between the lines ``\ell_1`` and ``\ell_2``.
 
-Returns `Point(NaN, NaN)` if there is no intersection. May throw a SingularException.
 """
-function line_intersect(ℓ1::Line{T}, ℓ2::Line{T};) where {T}
-    if vectors_parallel(ℓ1.dir, ℓ2.dir)
-        return _POINT_DOES_NOT_EXIST(T)
+    project_point_onto(ℓ, pt)
+
+Project point `pt` onto line `ℓ`.
+"""
+function project_point_onto(ℓ, pt)
+    return point_on(ℓ) + direction_of(ℓ) * projected_component(ℓ, pt)
+end
+
+"""
+    lines_parallel(ℓ1, ℓ2; atol)
+
+Test if two lines are parallel.
+"""
+function lines_parallel(ℓ1, ℓ2;)
+    return vectors_parallel(ℓ1.dir, ℓ2.dir)
+end
+
+"""
+    lines_coincident(ℓ1, ℓ2)
+
+Test if two lines are coincendent.
+"""
+function lines_coincident(ℓ1, ℓ2)
+    return is_other_point_on_line(ℓ1, point_on(ℓ2)) &&
+           vectors_parallel(direction_of(ℓ1), direction_of(ℓ2))
+end
+
+"""
+    right_normal(ℓ)
+
+Get a vector normal to `ℓ` that points into its right half-plane.
+"""
+function right_normal(ℓ)
+    dir = direction_of(ℓ)
+    return Vec{eltype(dir)}(dir[2], -dir[1])
+end
+
+"""
+    left_normal(ℓ)
+
+Get a vector normal to `ℓ` that points into its left half-plane.
+"""
+function left_normal(ℓ)
+    dir = direction_of(ℓ)
+    return Vec{eltype(dir)}(-dir[2], dir[1])
+end
+
+"""
+    line_intersect(ℓ_1, ℓ_2)
+
+Computes the point of intersection between the lines ``\\ell_1`` and ``\\ell_2``.
+
+Returns `PlanePolygons._POINT_DOES_NOT_EXIST` if there is no intersection. May throw a SingularException.
+"""
+function line_intersect(ℓ1, ℓ2)
+    if vectors_parallel(direction_of(ℓ1), direction_of(ℓ2))
+        return _POINT_DOES_NOT_EXIST(eltype(point_on(ℓ1)))
     end
-    d = ℓ2.p - ℓ1.p
-    A = hcat(ℓ1.dir, -1 * ℓ2.dir)
+    d = point_on(ℓ2) - point_on(ℓ1)
+    A = hcat(direction_of(ℓ1), -1 * direction_of(ℓ2))
     (_, s) = A \ d
-    return ℓ2.p + s * ℓ2.dir
+    return point_on(ℓ2) + s * direction_of(ℓ2)
 end
 
 """
@@ -65,93 +124,88 @@ function line_intersect(p::Point, q::Vec, u::Point, v::Vec;)
     return line_intersect(Line(p, q), Line(u, v))
 end
 
-function _right_half_plane(ℓ::Line, pt;)
+"""
+Helper function. Computes the LHS & RHS of `E⋅n = P⋅n`
+"""
+function _right_half_plane(ℓ, pt;)
     v1 = right_normal(ℓ) ⋅ pt
     v2 = right_normal(ℓ) ⋅ ℓ.p
     return (v1, v2)
 end
 
 """
-    point_in_right_half_plane(ℓ, pt; atol=1.0e-12)
+    point_in_right_half_plane(ℓ, pt)
 
 Test if the point `point` is to the right of the hyperplane defined by the line `ℓ`.
 """
-function point_in_right_half_plane(ℓ::Line, pt;)
+function point_in_right_half_plane(ℓ, pt)
     (v1, v2) = _right_half_plane(ℓ, pt)
     return v1 > v2 || isapprox(v1 - v2, 0; atol = _HOW_CLOSE_IS_TOO_CLOSE)
 end
 
-function point_in_right_half_plane_strict(ℓ::Line, pt;)
+function point_in_right_half_plane_strict(ℓ, pt)
     (v1, v2) = _right_half_plane(ℓ, pt)
     return v1 > v2 && !isapprox(v1 - v2, 0; atol = _HOW_CLOSE_IS_TOO_CLOSE)
 end
 
 """
-    point_in_right_half_plane(ℓ, pt; atol=1.0e-12)
+    point_in_left_half_plane(ℓ, pt)
 
 Test if the point `point` is to the left of the hyperplane defined by the line `ℓ`.
 """
-function point_in_left_half_plane(ℓ::Line, pt;)
-    return (point_on_line(ℓ, pt) || !point_in_right_half_plane(ℓ, pt))
+function point_in_left_half_plane(ℓ, pt;)
+    return (is_other_point_on_line(ℓ, pt) || !point_in_right_half_plane(ℓ, pt))
 end
 
-function point_in_left_half_plane_strict(ℓ::Line, pt;)
+function point_in_left_half_plane_strict(ℓ, pt;)
     return !point_in_right_half_plane(ℓ, pt)
 end
 
 """
-    point_on_line(ℓ, point; atol=1.0e-12)
+    edge_directions(poly)
 
-Test if the point `pt` is on the line `ℓ`.
+Returns an iterator of `Vec`s that are parellel to the corresponding edges of `poly`.
 """
-function point_on_line(ℓ::Line, pt;)
-    return vectors_parallel(pt - ℓ.p, ℓ.dir)
-end
-
-function projected_component(ℓ::Line, pt)
-    v = pt - ℓ.p
-    return (v ⋅ ℓ.dir) / (ℓ.dir ⋅ ℓ.dir)
-end
-
-function project_point_onto(ℓ::Line, pt)
-    return ℓ.p + ℓ.dir * projected_component(ℓ, pt)
-end
-
-"""
-    lines_parallel(ℓ1, ℓ2; atol)
-
-Test if two lines are parallel.
-"""
-function lines_parallel(ℓ1, ℓ2;)
-    return vectors_parallel(ℓ1.dir, ℓ2.dir)
-end
-
-function edge_directions(poly::ClockwiseOrientedPolygon)
+function edge_directions(poly)
     return Iterators.map(zip(edge_starts(poly), edge_ends(poly))) do (p1, p2)
         return p2 - p1
     end
 end
 
+"""
+    edge_lines(poly)
+
+Returns an iterator of `Line`s that coincide with the edges of `poly`. 
+The interior of `poly` is to the right of every `Line` in this iterator.
+"""
 function edge_lines(poly::ClockwiseOrientedPolygon)
-    return Iterators.map(zip(edge_starts(poly), edge_ends(poly))) do (a, b)
+    return Iterators.map(edge_starts(poly), edge_ends(poly)) do a, b
         return Line(a, b - a)
     end
 end
 
-edge_tangents(poly::ClockwiseOrientedPolygon) =
-    Iterators.map(normalize, edge_directions(poly))
+# default method 
+function edge_lines(poly)
+    return Iterators.map(edge_starts(poly), edge_ends(poly)) do a, b
+        return vcat(a, b - a)
+    end
+end
 
-function inward_edge_normals(poly::ClockwiseOrientedPolygon)
+function edge_tangents(poly)
+    return Iterators.map(normalize, edge_directions(poly))
+end
+
+function inward_edge_normals(poly)
     return Iterators.map(edge_tangents(poly)) do t̂
         return Point(t̂[2], -t̂[1])
     end
 end
 
-function outward_edge_normals(poly::ClockwiseOrientedPolygon)
+function outward_edge_normals(poly)
     return Iterators.map(v -> -1 * v, inward_edge_normals(poly))
 end
 
-function point_inside(poly::ClockwiseOrientedPolygon, pt;)
+function point_inside(poly, pt)
     all(isnan, pt) && return false
     return all(edge_lines(poly)) do ℓ
         point_in_right_half_plane(ℓ, pt)
@@ -163,8 +217,8 @@ end
 
 Computes the area of clockwise-oriented polygon `poly`.
 """
-function poly_area(poly::ClockwiseOrientedPolygon{T}) where {T}
-    twoA = zero(T)
+function poly_area(poly)
+    twoA = zero(eltype(first(edge_starts(poly))))
     for (p1, p2) ∈ zip(edge_starts(poly), edge_ends(poly))
         twoA -= p1[1] * p2[2] - p1[2] * p2[1]
     end
@@ -176,7 +230,7 @@ end
 
 Computes the intersections of each edge of polygon `poly` with the line ``\ell``.
 """
-function poly_line_intersections(poly, ℓ;)
+function poly_line_intersections(poly, ℓ)
     isections = map(edge_lines(poly)) do ℓ1
         line_intersect(ℓ, ℓ1)
     end
@@ -190,11 +244,11 @@ end
 """
     cut_poly_with_line(poly, ℓ; atol)
     
-Cuts polygon `poly` with the line ``\ell``. Keeps the polygon on the _right_ side of the line.
+Cuts polygon `poly` with the line ``\\ell``. Keeps the polygon on the _right_ side of the line.
 
 Returns the input polygon if the line does not cut the polygon.
 """
-function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ::Line{T}) where {T}
+function cut_poly_with_line(poly, ℓ)
     isect_pts = poly_line_intersections(poly, ℓ)
     yields_no_new_poly = all(isect_pts) do pt
         all(isnan, pt) && return true
@@ -235,7 +289,7 @@ This is in order to solve the case of polygons that share an edge but have an in
 
 Returns 'true' if the above conditions are met.
 """
-function _is_left_separating_axis(ax, poly;)
+function _is_left_separating_axis(ax, poly)
     all_left = all(edge_starts(poly)) do pt
         return point_in_left_half_plane(ax, pt)
     end
@@ -291,7 +345,7 @@ function poly_intersection(
     poly2::ClockwiseOrientedPolygon{T},
 ) where {T}
     if !are_polygons_intersecting(poly1, poly2)
-        return make_closed!([Point(T(NaN), T(NaN))])
+        return ClosedPolygon([Point(T(NaN), T(NaN))])
     end
     res = poly1
     for ℓ ∈ edge_lines(poly2)
@@ -308,7 +362,7 @@ function _renumber_edge_starts(poly, new_begin)
     ))
 end
 
-function polygons_equal(p1::ClockwiseOrientedPolygon, p2::ClockwiseOrientedPolygon;)
+function polygons_equal(p1, p2)
     if num_vertices(p1) != num_vertices(p2)
         return false
     end

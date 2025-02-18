@@ -5,11 +5,13 @@ using LinearAlgebra
 export Point, is_in_neighborhood
 export Vec, vectors_parallel
 export Line,
+    point_on,
+    direction_of,
     right_normal,
     left_normal,
     point_in_right_half_plane,
     point_in_left_half_plane,
-    point_on_line,
+    is_other_point_on_line,
     lines_coincident,
     line_intersect,
     lines_parallel

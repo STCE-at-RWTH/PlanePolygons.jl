@@ -26,12 +26,56 @@ Methods
 ---
 - `right_normal(ℓ)`
 - `left_normal(ℓ)`
-- `line_intersect(ℓ1, ℓ2; atol)`
-- `lines_parallel(ℓ1, ℓ2; atol)`
+- `line_intersect(ℓ1, ℓ2)`
+- `lines_parallel(ℓ1, ℓ2)`
 """
 struct Line{T}
     p::Point{T}
     dir::Vec{T}
+end
+
+"""
+    point_on(ℓ)
+
+Get a point on the line `ℓ`.
+"""
+@inline function point_on(ℓ::Line{T}) where {T}
+    return ℓ.p
+end
+
+"""
+    direction_of(ℓ)
+
+Get a vector parallel to `ℓ`.
+"""
+@inline function direction_of(ℓ::Line{T}) where {T}
+    return ℓ.dir
+end
+
+"""
+    _flatten(ℓ::Line{T}) where {T}
+
+Flatten `ℓ` and convert it into a 4-element `SVector{T}`.
+"""
+function _flatten(ℓ::Line{T}) where {T}
+    return SVector{4,T}(ℓ.p..., ℓ.dir...)
+end
+
+function point_on(ℓ::SVector{4,T}) where {T}
+    return Point{T}(ℓ[1], ℓ[2])
+end
+
+function direction_of(ℓ::SVector{4,T}) where {T}
+    return Vec{T}(ℓ[3], ℓ[4])
+end
+
+"""
+    _unflatten_line(ℓ)
+
+Unflatten `ℓ` and convert it back to a `Line{T}`.
+"""
+function _unflatten_line(ℓ::SVector{4,T}) where {T}
+    return Line{T}(point_on(ℓ), direction_of(ℓ))
 end
 
 """
@@ -84,6 +128,10 @@ function ClosedPolygon(data::AbstractArray{T}) where {T}
     return ClosedPolygon(reinterpret(Point{T}, data))
 end
 
+function _flatten(poly::ClosedPolygon{T}) where {T}
+    return copy(reinterpret(T, poly.pts))
+end
+
 abstract type SizedClockwiseOrientedPolygon{NV,T} <: ClockwiseOrientedPolygon{T} end
 
 num_vertices(::SizedClockwiseOrientedPolygon{NV}) where {NV} = NV
@@ -104,7 +152,7 @@ end
 function SClosedPolygon(data::SVector{TWONV,T}) where {TWONV,T}
     NV = TWONV ÷ 2
     pts = SVector(ntuple(NV) do i
-        Point(data[2 * i - 1], data[2*i])
+        Point(data[2*i-1], data[2*i])
     end)
     return SClosedPolygon(pts)
 end
@@ -115,6 +163,10 @@ end
 
 function edge_ends(p::SClosedPolygon{NV,T}) where {NV,T}
     return p.pts[SVector(ntuple(i -> i + 1, NV - 1)..., 1)]
+end
+
+function _flatten(p::SClosedPolygon{NV, T}) where {NV, T}
+    return reduce(vcat, p.pts)
 end
 
 struct MClosedPolygon{NV,T} <: SizedClockwiseOrientedPolygon{NV,T}
@@ -138,17 +190,65 @@ function edge_ends(p::MClosedPolygon{NV}) where {NV}
     return (i == num_vertices(p) ? p.pts[1] : p.pts[i+1] for i = 1:NV)
 end
 
-function _flatten(poly::ClockwiseOrientedPolygon{T}) where {T}
-    return reduce(vcat, edge_starts(poly))
-end
+##
+# FLATTEN AND RECONSTRUCT
+##
 
 function _flatten(poly::MClosedPolygon{NV,T}) where {NV,T}
     return MVector{2 * NV,T}(reduce(vcat, edge_starts(poly)))
 end
 
-_reconstruct_polygon(data::SVector{TWONV,T}) where {TWONV,T} = SClosedPolygon(data)
-_reconstruct_polygon(data::MVector{TWONV,T}) where {TWONV,T} = MClosedPolygon(data)
+_unflatten_polygon(data::SVector{TWONV,T}) where {TWONV,T} = SClosedPolygon(data)
+_unflatten_polygon(data::MVector{TWONV,T}) where {TWONV,T} = MClosedPolygon(data)
 
-function _reconstruct_polygon(data::Vector{T}) where {T}
+function _unflatten_polygon(data::Vector{T}) where {T}
     ClosedPolygon(copy(reinterpret(Point{T}, data)))
+end
+
+##
+# WACKY NONSENSE
+## 
+
+function num_vertices(::SVector{TWONV,T}) where {TWONV,T}
+    if isodd(TWONV)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $TWONV",
+            ),
+        )
+    else
+        return div(TWONV, 2)
+    end
+end
+
+function edge_starts(poly_data::SVector{TWONV,T}) where {TWONV,T}
+    if isodd(TWONV)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $TWONV",
+            ),
+        )
+    else
+        return (Point{T}(poly_data[i], poly_data[i+1]) for i ∈ 1:2:TWONV)
+    end
+end
+
+function edge_ends(poly_data::SVector{TWONV,T}) where {TWONV,T}
+    if isodd(TWONV)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $TWONV",
+            ),
+        )
+    else
+        return (
+            begin
+                if i == TWONV - 1
+                    Point{T}(poly_data[1], poly_data[2])
+                else
+                    Point{T}(poly_data[i+2], poly_data[i+3])
+                end
+            end for i ∈ 1:2:TWONV
+        )
+    end
 end
