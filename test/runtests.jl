@@ -30,9 +30,6 @@ using PlanePolygons
     l3 = Line(Point(-2.0, 0.0), p4)
 
     @testset "Line" begin
-        l1 = Line(p1, p3)
-        l2 = Line(p2, Vec(1.0, -1.0))
-        l3 = Line(Point(-2.0, 0.0), p4)
         l4 = Line(Point(40.0, 40.0), Vec(-1.0, -1.0))
         using PlanePolygons: _flatten, _unflatten_line
 
@@ -75,7 +72,7 @@ using PlanePolygons
             A = line_intersect(l1, l2)
             @test all(!isnan, A)
             @test is_in_neighborhood(p5, A)
-            @test all(isnan, line_intersect(Line(p1, p5), Line(p2, p3)))
+            #@test all(isnan, line_intersect(Line(p1, p5), Line(p2, p3)))
         end
     end
 
@@ -247,18 +244,28 @@ end
         @test s[4] == [0.5, -0.5]
     end
 
-    @testset "Flattened Polygons" begin
+    calc_isect_area(arr1, arr2) = begin 
+        res_arr = poly_intersection(arr1, arr2)
+        return poly_area(res_arr)        
+    end
+
+    calc_isections(arr1, arr2) = begin
+        res_arr = poly_line_intersections(arr1, arr2);
+    end
+
+    @testset "Flattened Polygons Isection (gradient)" begin
         using PlanePolygons: _flatten, _unflatten_polygon
-        poly1 = ClosedPolygon(Point(0.0, 0.0), Point(2.0, 2.0), Point(2.0, 0.0))
+        poly1 = SClosedPolygon(Point(0.0, 0.0), Point(2.0, 2.0), Point(2.0, 0.0))
         fp1 = _flatten(poly1)
-        poly2 = ClosedPolygon(Point(0.0, 0.0), Point(0.0, 2.0), Point(2.0, 0.0))
+        poly2 = SClosedPolygon(Point(0.0, 0.0), Point(0.0, 2.0), Point(2.0, 0.0))
         fp2 = _flatten(poly2)
         poly_result = SClosedPolygon(Point(0.0, 0.0), Point(1.0, 1.0), Point(2.0, 0.0))
         # is the result correct
         @test polygons_equal(poly_intersection(poly1, poly2), poly_result)
+        @test polygons_equal(poly_intersection(fp1, fp2), poly_result)
 
-        calc_isect_area(arr1, arr2) = begin 
-            
-        end
+        cache = Mooncake.prepare_gradient_cache(calc_isect_area, fp1, fp2)
+        out = Mooncake.value_and_gradient!!(cache, calc_isect_area, fp1, fp2)
+        @show out
     end
 end

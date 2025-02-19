@@ -128,6 +128,14 @@ function ClosedPolygon(data::AbstractArray{T}) where {T}
     return ClosedPolygon(reinterpret(Point{T}, data))
 end
 
+function ClosedPolygon(poly::ClockwiseOrientedPolygon{T}) where {T}
+    return ClosedPolygon(collect(poly.pts))
+end
+ 
+function ClosedPolygon(poly::ClosedPolygon{T}) where {T}
+    return ClosedPolygon(poly.pts)
+end
+
 function _flatten(poly::ClosedPolygon{T}) where {T}
     return copy(reinterpret(T, poly.pts))
 end
@@ -165,7 +173,7 @@ function edge_ends(p::SClosedPolygon{NV,T}) where {NV,T}
     return p.pts[SVector(ntuple(i -> i + 1, NV - 1)..., 1)]
 end
 
-function _flatten(p::SClosedPolygon{NV, T}) where {NV, T}
+function _flatten(p::SClosedPolygon{NV,T}) where {NV,T}
     return reduce(vcat, p.pts)
 end
 
@@ -229,11 +237,57 @@ function edge_starts(poly_data::SVector{TWONV,T}) where {TWONV,T}
             ),
         )
     else
-        return (Point{T}(poly_data[i], poly_data[i+1]) for i ∈ 1:2:TWONV)
+        return SVector{div(TWONV, 2),Point{T}}((
+            Point{T}(poly_data[i], poly_data[i+1]) for i ∈ 1:2:TWONV
+        ))
     end
 end
 
 function edge_ends(poly_data::SVector{TWONV,T}) where {TWONV,T}
+    if isodd(TWONV)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $TWONV",
+            ),
+        )
+    else
+        return SVector{div(TWONV, 2),Point{T}}((
+            begin
+                if i == TWONV - 1
+                    Point{T}(poly_data[1], poly_data[2])
+                else
+                    Point{T}(poly_data[i+2], poly_data[i+3])
+                end
+            end for i ∈ 1:2:TWONV
+        ))
+    end
+end
+
+function num_vertices(::MVector{TWONV,T}) where {TWONV,T}
+    if isodd(TWONV)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $TWONV",
+            ),
+        )
+    else
+        return div(TWONV, 2)
+    end
+end
+
+function edge_starts(poly_data::MVector{TWONV,T}) where {TWONV,T}
+    if isodd(TWONV)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $TWONV",
+            ),
+        )
+    else
+        return (Point{T}(poly_data[i], poly_data[i+1]) for i ∈ 1:2:TWONV)
+    end
+end
+
+function edge_ends(poly_data::MVector{TWONV,T}) where {TWONV,T}
     if isodd(TWONV)
         throw(
             ArgumentError(
@@ -249,6 +303,53 @@ function edge_ends(poly_data::SVector{TWONV,T}) where {TWONV,T}
                     Point{T}(poly_data[i+2], poly_data[i+3])
                 end
             end for i ∈ 1:2:TWONV
+        )
+    end
+end
+
+function num_vertices(poly_data::Vector{T}) where {T}
+    two_nv = length(poly_data)
+    if isodd(two_nv)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $two_nv",
+            ),
+        )
+    else
+        return div(two_nv, 2)
+    end
+end
+
+function edge_starts(poly_data::Vector{T}) where {T}
+    two_nv = length(poly_data)
+    if isodd(two_nv)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $two_nv",
+            ),
+        )
+    else
+        return (Point{T}(poly_data[i], poly_data[i+1]) for i ∈ 1:2:two_nv)
+    end
+end
+
+function edge_ends(poly_data::Vector{T}) where {T}
+    two_nv = length(poly_data)
+    if isodd(two_nv)
+        throw(
+            ArgumentError(
+                "Polygon as block array must have even number of entries... TWONV = $two_nv",
+            ),
+        )
+    else
+        return (
+            begin
+                if i == two_nv - 1
+                    Point{T}(poly_data[1], poly_data[2])
+                else
+                    Point{T}(poly_data[i+2], poly_data[i+3])
+                end
+            end for i ∈ 1:2:two_nv
         )
     end
 end

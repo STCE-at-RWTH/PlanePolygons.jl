@@ -39,7 +39,7 @@ What is the projected length from the base point of `ℓ` to the point `pt`?
 """
 function projected_component(ℓ, pt)
     v = pt - point_on(ℓ)
-    return (v ⋅ ℓ.dir) / (ℓ.dir ⋅ ℓ.dir)
+    return (v ⋅ direction_of(ℓ)) / (direction_of(ℓ) ⋅ direction_of(ℓ))
 end
 
 """
@@ -127,9 +127,9 @@ end
 """
 Helper function. Computes the LHS & RHS of `E⋅n = P⋅n`
 """
-function _right_half_plane(ℓ, pt;)
+function _right_half_plane(ℓ, pt)
     v1 = right_normal(ℓ) ⋅ pt
-    v2 = right_normal(ℓ) ⋅ ℓ.p
+    v2 = right_normal(ℓ) ⋅ point_on(ℓ)
     return (v1, v2)
 end
 
@@ -172,6 +172,14 @@ function edge_directions(poly)
     end
 end
 
+function edge_directions(poly::SVector{TWONV,T}) where {TWONV,T}
+    return edge_ends(poly) - edge_starts(poly)
+end
+
+function edge_directions(poly::SClosedPolygon{NV,T}) where {NV,T}
+    return edge_ends(poly) - edge_starts(poly)
+end
+
 """
     edge_lines(poly)
 
@@ -191,8 +199,28 @@ function edge_lines(poly)
     end
 end
 
+function edge_lines(poly::SClosedPolygon{NV,T}) where {NV,T}
+    return mapreduce(vcat, edge_starts(poly), edge_ends(poly)) do a, b
+        return SVector(Line(a, b - a))
+    end
+end
+
+function edge_lines(poly::SVector{TWONV,T}) where {TWONV,T}
+    return map(edge_starts(poly), edge_ends(poly)) do a, b
+        return SVector(a..., (b - a)...)
+    end
+end
+
 function edge_tangents(poly)
     return Iterators.map(normalize, edge_directions(poly))
+end
+
+function edge_tangents(poly::SVector{TWONV,T}) where {TWONV,T}
+    return map(normalize, edge_directions(poly))
+end
+
+function edge_tangents(poly::SClosedPolygon{NV,T}) where {NV,T}
+    return map(normalize, edge_directions(poly))
 end
 
 function inward_edge_normals(poly)
@@ -201,15 +229,32 @@ function inward_edge_normals(poly)
     end
 end
 
+function inward_edge_normals(poly::SVector{TWONV,T}) where {TWONV,T}
+    return map(edge_tangents(poly)) do t̂
+        return Point(t̂[2], -t̂[1])
+    end
+end
+
+function inward_edge_normals(poly::SClosedPolygon{NV,T}) where {NV,T}
+    return map(edge_tangents(poly)) do t̂
+        return Point(t̂[2], -t̂[1])
+    end
+end
+
 function outward_edge_normals(poly)
     return Iterators.map(v -> -1 * v, inward_edge_normals(poly))
 end
 
+function outward_edge_normals(poly::SVector{TWONV,T}) where {TWONV,T}
+    return map(n -> -1 * n, inward_edge_normals(poly))
+end
+
+function outward_edge_normals(poly::SClosedPolygon{NV,T}) where {NV,T}
+    return map(n -> -1 * n, inward_edge_normals(poly))
+end
+
 function point_inside(poly, pt)
-    all(isnan, pt) && return false
-    return all(edge_lines(poly)) do ℓ
-        point_in_right_half_plane(ℓ, pt)
-    end
+    return all(Base.Fix2(point_in_right_half_plane, pt), edge_lines(poly))
 end
 
 """
@@ -226,37 +271,46 @@ function poly_area(poly)
 end
 
 """
-    poly_line_intersections(poly, ℓ; atol)
+    poly_line_intersections(poly, ℓ)
 
-Computes the intersections of each edge of polygon `poly` with the line ``\ell``.
+Computes the intersections of each edge of polygon `poly` with the line ``\\ell``.
 """
 function poly_line_intersections(poly, ℓ)
-    isections = map(edge_lines(poly)) do ℓ1
+    isections = Iterators.map(edge_lines(poly)) do ℓ1
         line_intersect(ℓ, ℓ1)
     end
     return isections
 end
 
-function poly_line_intersections(poly, p, q;)
-    return poly_line_intersections(poly, Line(p, q))
+function poly_line_intersections(poly::SVector{TWONV, T}, ℓ) where {TWONV, T}
+    return map(edge_lines(poly)) do ℓ1
+        line_intersect(ℓ, ℓ1)
+    end
+end
+
+function poly_line_intersections(poly::SClosedPolygon{NV, T}, ℓ) where {NV, T}
+    return map(edge_lines(poly)) do ℓ1
+        line_intersect(ℓ, ℓ1)
+    end
+end
+
+function _cut_yields_new_poly(poly, isect_pts)
+    return any(isect_pts) do pt
+        return pt != _POINT_DOES_NOT_EXIST(eltype(pt)) && point_inside(poly, pt)
+    end
 end
 
 """
-    cut_poly_with_line(poly, ℓ; atol)
+    cut_poly_with_line(poly, ℓ)
     
 Cuts polygon `poly` with the line ``\\ell``. Keeps the polygon on the _right_ side of the line.
 
 Returns the input polygon if the line does not cut the polygon.
 """
-function cut_poly_with_line(poly, ℓ)
+function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ) where {T}
     isect_pts = poly_line_intersections(poly, ℓ)
-    yields_no_new_poly = all(isect_pts) do pt
-        all(isnan, pt) && return true
-        point_inside(poly, pt) && return false
-        return true
-    end
-    if yields_no_new_poly
-        return ClosedPolygon(poly.pts)
+    if !_cut_yields_new_poly(poly, isect_pts)
+        return ClosedPolygon(poly)
     end
     new_pts_right = Point{T}[]
     sizehint!(new_pts_right, num_vertices(poly) + 2)
@@ -278,6 +332,37 @@ function cut_poly_with_line(poly, ℓ)
         ClosedPolygon(new_pts_right)
     end
     return polyR
+end
+
+function cut_poly_with_line(poly, ℓ)
+    T = eltype(first(edge_starts(poly)))
+    isect_pts = poly_line_intersections(poly, ℓ)
+    if !_cut_yields_new_poly(poly, isect_pts)
+        return collect(poly)
+    end
+    new_data = T[]
+    #sizehint!(new_data, 2 * (num_vertices(poly)) + 2)
+    for pt ∈ Iterators.flatten(zip(edge_starts(poly), isect_pts))
+        all(isnan, pt) && continue
+        point_inside(poly, pt) || continue
+        if point_in_right_half_plane(ℓ, pt)
+            if (
+                isempty(new_data) ||
+                !is_in_neighborhood(pt, Point(new_data[end-1], new_data[end]))
+            )
+                push!(new_data, pt...)
+            end
+        end
+    end
+    if isempty(new_data)
+        push!(new_data, _POINT_DOES_NOT_EXIST(T)..., _POINT_DOES_NOT_EXIST(T)...)
+    elseif is_in_neighborhood(
+        Point(new_data[1], new_data[2]),
+        Point(new_data[end-1], new_data[end]),
+    )
+        deleteat!(new_data, (lastindex(new_data) - 1, lastindex(new_data)))
+    end
+    return new_data
 end
 
 # 
@@ -302,14 +387,14 @@ function _is_left_separating_axis(ax, poly)
     end
 end
 
-function _poly_image(ℓ::Line, poly)
+function _poly_image(ℓ, poly)
     return extrema(edge_starts(poly)) do pt
         projected_component(ℓ, pt)
     end
 end
 
-function _separating_axis(n::Vec, poly1, poly2;)
-    ℓ = Line(Point(0.0, 0.0), Point(-n[2], n[1]))
+function _separating_axis(n, poly1, poly2)
+    ℓ = SVector(zero(eltype(n)), zero(eltype(n)), -n[2], n[1])
     p1_L, p1_R = _poly_image(ℓ, poly1)
     p2_L, p2_R = _poly_image(ℓ, poly2)
     # @show ℓ, (p1_L, p1_R), (p2_L, p2_R)
@@ -335,8 +420,16 @@ function are_polygons_intersecting(poly1, poly2;)
     return !has_separating_axis
 end
 
+function _apply_cuts(poly1, poly2)
+    res = poly1
+    for ℓ ∈ edge_lines(poly2)
+        res = cut_poly_with_line(res, ℓ)
+    end
+    return res
+end
+
 """
-    poly_intersection(poly1, poly2; atol=1.0e-12)
+    poly_intersection(poly1, poly2)
 
 Returns the portion of `poly1` also contained by `poly2`.
 """
@@ -345,13 +438,17 @@ function poly_intersection(
     poly2::ClockwiseOrientedPolygon{T},
 ) where {T}
     if !are_polygons_intersecting(poly1, poly2)
-        return ClosedPolygon([Point(T(NaN), T(NaN))])
+        return ClosedPolygon(_POINT_DOES_NOT_EXIST(T))
     end
-    res = poly1
-    for ℓ ∈ edge_lines(poly2)
-        res = cut_poly_with_line(res, ℓ)
+    return _apply_cuts(poly1, poly2)
+end
+
+function poly_intersection(poly1, poly2)
+    T = eltype(first(edge_starts(poly1)))
+    if !are_polygons_intersecting(poly1, poly2)
+        return [_POINT_DOES_NOT_EXIST(T)...]
     end
-    return res
+    return _apply_cuts(poly1, poly2)
 end
 
 function _renumber_edge_starts(poly, new_begin)
