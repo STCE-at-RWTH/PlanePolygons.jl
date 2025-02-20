@@ -24,10 +24,13 @@ Fields
 
 Methods
 ---
+- `point_on(ℓ)`: gets a point on `ℓ`
+- `direction_of(ℓ)`: gets the direction of `ℓ`
 - `right_normal(ℓ)`
 - `left_normal(ℓ)`
 - `line_intersect(ℓ1, ℓ2)`
 - `lines_parallel(ℓ1, ℓ2)`
+- `lines_coincident(ℓ1, ℓ2)`
 """
 struct Line{T}
     p::Point{T}

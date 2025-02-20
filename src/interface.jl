@@ -263,7 +263,7 @@ end
 Computes the area of clockwise-oriented polygon `poly`.
 """
 function poly_area(poly)
-    twoA = zero(eltype(first(edge_starts(poly))))
+    twoA = zero(_numeric_dtype(poly))
     for (p1, p2) ∈ zip(edge_starts(poly), edge_ends(poly))
         twoA -= p1[1] * p2[2] - p1[2] * p2[1]
     end
