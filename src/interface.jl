@@ -113,11 +113,11 @@ end
 end
 Computes the point of intersection between the lines
 ``
-    \vec p + t\vec q
+    \\vec p + t\\vec q
 ``
 and
 ``
-    \vec u + s\vec v
+    \\vec u + s\\vec v
 ``.
 """
 function line_intersect(p::Point, q::Vec, u::Point, v::Vec;)
@@ -282,13 +282,13 @@ function poly_line_intersections(poly, ℓ)
     return isections
 end
 
-function poly_line_intersections(poly::SVector{TWONV, T}, ℓ) where {TWONV, T}
+function poly_line_intersections(poly::SVector{TWONV,T}, ℓ) where {TWONV,T}
     return map(edge_lines(poly)) do ℓ1
         line_intersect(ℓ, ℓ1)
     end
 end
 
-function poly_line_intersections(poly::SClosedPolygon{NV, T}, ℓ) where {NV, T}
+function poly_line_intersections(poly::SClosedPolygon{NV,T}, ℓ) where {NV,T}
     return map(edge_lines(poly)) do ℓ1
         line_intersect(ℓ, ℓ1)
     end
@@ -335,7 +335,7 @@ function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ) where {T}
 end
 
 function cut_poly_with_line(poly, ℓ)
-    T = eltype(first(edge_starts(poly)))
+    T = _numeric_dtype(poly)
     isect_pts = poly_line_intersections(poly, ℓ)
     if !_cut_yields_new_poly(poly, isect_pts)
         return collect(poly)

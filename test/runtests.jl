@@ -3,6 +3,7 @@ using StaticArrays
 using Test
 
 using PlanePolygons
+using PlanePolygons: _POINT_DOES_NOT_EXIST, _HOW_CLOSE_IS_TOO_CLOSE
 
 @testset "PlanePolygons.jl" begin
     p1 = Point(0.0, 0.0)
@@ -25,34 +26,41 @@ using PlanePolygons
         @test !vectors_parallel(Vec(1.0, 1.0), Vec(1.0, 2.0))
     end
 
-    l1 = Line(p1, p3)
-    l2 = Line(p2, Vec(1.0, -1.0))
-    l3 = Line(Point(-2.0, 0.0), p4)
-
     @testset "Line" begin
-        l4 = Line(Point(40.0, 40.0), Vec(-1.0, -1.0))
+        l1 = Line(Point(0.0, 0.0), Vec(1.0, 1.0))
+        l2 = Line(Point(0.0, 1.0), Vec(1.0, -1.0))
+        l3 = Line(Point(-2.0, 0.0), Vec(1., 0.));
+        l4 = Line(Point(40.0, 40.0), Vec(-2.0, -1.0))
         using PlanePolygons: _flatten, _unflatten_line
 
         for (ell1, ell2) ∈ zip((l1, l2, l3), (l2, l3, l4))
             f_ell1 = _flatten(ell1)
             f_ell2 = _flatten(ell2)
+
+            @test is_in_neighborhood(direction_of(ell1), direction_of(f_ell1))
+            @test is_in_neighborhood(point_on(ell1), point_on(f_ell1))
+            
             @test vectors_parallel(direction_of(ell1), direction_of(f_ell1))
             @test !vectors_parallel(direction_of(ell1), direction_of(ell2))
             @test !vectors_parallel(direction_of(f_ell1), direction_of(f_ell2))
+            
             @test lines_coincident(ell1, ell1)
             @test lines_coincident(f_ell1, f_ell1)
             @test lines_coincident(ell1, f_ell1)
             @test !lines_coincident(ell1, ell2)
             @test !lines_coincident(f_ell1, f_ell2)
+            
             @test is_other_point_on_line(ell1, point_on(ell1))
             @test is_other_point_on_line(ell1, point_on(f_ell1))
             @test is_other_point_on_line(f_ell1, point_on(f_ell1))
             @test is_other_point_on_line(f_ell1, point_on(ell1))
-        end
 
-        # are normals normal?
-        @test right_normal(l1) ⋅ l1.dir ≈ 0
-        @test left_normal(l1) ⋅ l1.dir ≈ 0
+            @test line_intersect(ell1, ell2) != _POINT_DOES_NOT_EXIST(Float64)
+            @test right_normal(ell1) ⋅ direction_of(ell1) ≈ 0
+            @test right_normal(f_ell1) ⋅ direction_of(ell1) ≈ 0
+            @test left_normal(ell1) ⋅ direction_of(ell1) ≈ 0
+            @test left_normal(f_ell1) ⋅ direction_of(ell1) ≈ 0
+        end
 
         @test point_in_right_half_plane(l2, Point(-1.0, -1.0))
         @test point_in_left_half_plane(l2, Point(1.0, 1.0))
@@ -64,9 +72,6 @@ using PlanePolygons
         @test is_other_point_on_line(l1, Point(10.0, 10.0))
         @test is_other_point_on_line(l3, Point(-0.75, 0.0))
 
-        @test lines_coincident(l1, l4)
-        @test !lines_coincident(l1, l2)
-
         @testset "Intersection" begin
             # do lines intersect?
             A = line_intersect(l1, l2)
@@ -76,7 +81,7 @@ using PlanePolygons
         end
     end
 
-    @testset "SPoly and _flatten" begin 
+    @testset "SPoly and _flatten" begin
         using PlanePolygons: _flatten
         tri_low = SClosedPolygon(p1, p2, p4)
         tri_low_neworder = SClosedPolygon(p4, p1, p2)
@@ -85,16 +90,22 @@ using PlanePolygons
         @test polygons_equal(tri_low, _flatten(tri_low_neworder))
         tri_up = SClosedPolygon(p2, p3, p4)
         tri_mid = SClosedPolygon(p1, p5, p4)
-        
+
         for tri ∈ (tri_low, tri_up, tri_mid)
             ftri = _flatten(tri)
             @test num_vertices(tri) == 3
             @test num_vertices(ftri) == 3
-            @test all(arg -> is_in_neighborhood(arg...), zip(edge_starts(tri), edge_starts(ftri)))
-            @test all(arg -> is_in_neighborhood(arg...), zip(edge_ends(tri), edge_ends(ftri)))
+            @test all(
+                arg -> is_in_neighborhood(arg...),
+                zip(edge_starts(tri), edge_starts(ftri)),
+            )
+            @test all(
+                arg -> is_in_neighborhood(arg...),
+                zip(edge_ends(tri), edge_ends(ftri)),
+            )
             @test polygons_equal(tri, ftri)
             @test poly_area(tri) == poly_area(ftri)
-            @test are_polygons_intersecting(tri ,tri)
+            @test are_polygons_intersecting(tri, tri)
             @test are_polygons_intersecting(tri, ftri)
         end
 
@@ -149,6 +160,7 @@ using PlanePolygons
     end
 
     @testset "Cutting" begin
+        l1 = Line(Point(0.0, 0.0), Vec(1.0, 1.0))
         sqr = SClosedPolygon(p1, p2, p3, p4)
         tri_low = SClosedPolygon(p1, p3, p4)
         tri_up = SClosedPolygon(p1, p2, p3)
@@ -244,13 +256,13 @@ end
         @test s[4] == [0.5, -0.5]
     end
 
-    calc_isect_area(arr1, arr2) = begin 
+    calc_isect_area(arr1, arr2) = begin
         res_arr = poly_intersection(arr1, arr2)
-        return poly_area(res_arr)        
+        return poly_area(res_arr)
     end
 
     calc_isections(arr1, arr2) = begin
-        res_arr = poly_line_intersections(arr1, arr2);
+        res_arr = poly_line_intersections(arr1, arr2)
     end
 
     @testset "Flattened Polygons Isection (gradient)" begin

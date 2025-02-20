@@ -83,9 +83,9 @@ end
 
 A polygon, with its vertices listed in clockwise order (negative orientation).
 
-Interface
+(Public) Interface
 ---
-- `num_vertices(poly::ClockwiseOrientedPolygon)`
+- `num_vertices(poly::ClockwiseOrientedPolygon)`: Number of vertices (and edges).
 - `edge_starts(poly::ClockwiseOrientedPolygon)`: Edge starting points
 - `edge_ends(poly::ClockwiseOrientedPolygon)`: Edge endpoints
 - `edge_directions(poly::ClockwiseOrientedPolygon)`: Iterable of vectors parallel to the edges. Defined by default.
@@ -98,8 +98,16 @@ Interface
 - `cut_poly_with_line(poly::ClockwiseOrientedPolygon, line::Line; keep_right: true)`
 - `are_polygons_intersecting(poly1::ClockwiseOrientedPolygon, poly2::ClockwiseOrientedPolygon)`
 - `poly_intersection(poly1::ClockwiseOrientedPolygon, poly2::ClockwiseOrientedPolygon)`
+
+(Private) Interface
+---
+- `_numeric_dtype(poly)`, `_numeric_dtype(::Type{poly})`: Backing data type of a polygon.
 """
 abstract type ClockwiseOrientedPolygon{T} end
+
+_numeric_dtype(::ClockwiseOrientedPolygon{T}) where T = T
+_numeric_dtype(::Type{ClockwiseOrientedPolygon{T}}) where T = T
+_numeric_dtype(other_object) = eltype(other_object)
 
 """
     ClosedPolygon{T}
