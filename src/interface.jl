@@ -257,6 +257,10 @@ function point_inside(poly, pt)
     return all(Base.Fix2(point_in_right_half_plane, pt), edge_lines(poly))
 end
 
+function point_inside_strict(poly, pt)
+    return all(Base.Fix2(point_in_right_half_plane_strict, pt), edge_lines(poly))
+end
+
 """
     poly_area(poly)
 
@@ -264,6 +268,10 @@ Computes the area of clockwise-oriented polygon `poly`.
 """
 function poly_area(poly)
     twoA = zero(_numeric_dtype(poly))
+    dne = _POINT_DOES_NOT_EXIST(_numeric_dtype(poly))
+    if any(==(dne), edge_starts(poly))
+        return twoA
+    end
     for (p1, p2) ∈ zip(edge_starts(poly), edge_ends(poly))
         twoA -= p1[1] * p2[2] - p1[2] * p2[1]
     end
@@ -394,15 +402,16 @@ function _poly_image(ℓ, poly)
 end
 
 function _separating_axis(n, poly1, poly2)
-    ℓ = SVector(zero(eltype(n)), zero(eltype(n)), -n[2], n[1])
-    p1_L, p1_R = _poly_image(ℓ, poly1)
-    p2_L, p2_R = _poly_image(ℓ, poly2)
+    ℓ = SVector(zero(Point{eltype(n)})..., n...)
+    p1_min, p1_max = _poly_image(ℓ, poly1)
+    p2_min, p2_max = _poly_image(ℓ, poly2)
+
     # @show ℓ, (p1_L, p1_R), (p2_L, p2_R)
-    if p1_R < p2_L || isapprox(p1_R, p2_L; atol = _HOW_CLOSE_IS_TOO_CLOSE)
+    if p1_max < p2_min || isapprox(p1_max, p2_min; atol = _HOW_CLOSE_IS_TOO_CLOSE)
         # largest projection of p1 is less than smallest projection of p2 
-        # AND they are not approx equal
+        # OR they are approx equal => axis separates
         return true
-    elseif p2_R < p1_L || isapprox(p1_L, p2_R; atol = _HOW_CLOSE_IS_TOO_CLOSE)
+    elseif p2_max < p1_min || isapprox(p1_min, p2_max; atol = _HOW_CLOSE_IS_TOO_CLOSE)
         # largest projection of p2 is less than smallest projection of p1
         # AND they are not approx equal
         return true

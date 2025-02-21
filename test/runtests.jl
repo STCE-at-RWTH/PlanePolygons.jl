@@ -29,7 +29,7 @@ using PlanePolygons: _POINT_DOES_NOT_EXIST, _HOW_CLOSE_IS_TOO_CLOSE
     @testset "Line" begin
         l1 = Line(Point(0.0, 0.0), Vec(1.0, 1.0))
         l2 = Line(Point(0.0, 1.0), Vec(1.0, -1.0))
-        l3 = Line(Point(-2.0, 0.0), Vec(1., 0.));
+        l3 = Line(Point(-2.0, 0.0), Vec(1.0, 0.0))
         l4 = Line(Point(40.0, 40.0), Vec(-2.0, -1.0))
         using PlanePolygons: _flatten, _unflatten_line
 
@@ -39,17 +39,17 @@ using PlanePolygons: _POINT_DOES_NOT_EXIST, _HOW_CLOSE_IS_TOO_CLOSE
 
             @test is_in_neighborhood(direction_of(ell1), direction_of(f_ell1))
             @test is_in_neighborhood(point_on(ell1), point_on(f_ell1))
-            
+
             @test vectors_parallel(direction_of(ell1), direction_of(f_ell1))
             @test !vectors_parallel(direction_of(ell1), direction_of(ell2))
             @test !vectors_parallel(direction_of(f_ell1), direction_of(f_ell2))
-            
+
             @test lines_coincident(ell1, ell1)
             @test lines_coincident(f_ell1, f_ell1)
             @test lines_coincident(ell1, f_ell1)
             @test !lines_coincident(ell1, ell2)
             @test !lines_coincident(f_ell1, f_ell2)
-            
+
             @test is_other_point_on_line(ell1, point_on(ell1))
             @test is_other_point_on_line(ell1, point_on(f_ell1))
             @test is_other_point_on_line(f_ell1, point_on(f_ell1))
@@ -81,57 +81,95 @@ using PlanePolygons: _POINT_DOES_NOT_EXIST, _HOW_CLOSE_IS_TOO_CLOSE
         end
     end
 
-    @testset "SPoly and _flatten" begin
-        using PlanePolygons: _flatten
-        tri_low = SClosedPolygon(p1, p2, p4)
-        tri_low_neworder = SClosedPolygon(p4, p1, p2)
-        @test polygons_equal(tri_low, tri_low_neworder)
-        @test polygons_equal(tri_low_neworder, tri_low)
-        @test polygons_equal(tri_low, _flatten(tri_low_neworder))
-        tri_up = SClosedPolygon(p2, p3, p4)
-        tri_mid = SClosedPolygon(p1, p5, p4)
+    @testset "SPoly" begin
+        @testset "_flatten" begin
+            using PlanePolygons: _flatten
+            tri_low = SClosedPolygon(p1, p2, p4)
+            tri_low_neworder = SClosedPolygon(p4, p1, p2)
+            @test polygons_equal(tri_low, tri_low_neworder)
+            @test polygons_equal(tri_low_neworder, tri_low)
+            @test polygons_equal(tri_low, _flatten(tri_low_neworder))
+            tri_up = SClosedPolygon(p2, p3, p4)
+            tri_mid = SClosedPolygon(p1, p5, p4)
 
-        for tri ∈ (tri_low, tri_up, tri_mid)
-            ftri = _flatten(tri)
-            @test num_vertices(tri) == 3
-            @test num_vertices(ftri) == 3
-            @test all(
-                arg -> is_in_neighborhood(arg...),
-                zip(edge_starts(tri), edge_starts(ftri)),
-            )
-            @test all(
-                arg -> is_in_neighborhood(arg...),
-                zip(edge_ends(tri), edge_ends(ftri)),
-            )
-            @test polygons_equal(tri, ftri)
-            @test poly_area(tri) == poly_area(ftri)
-            @test are_polygons_intersecting(tri, tri)
-            @test are_polygons_intersecting(tri, ftri)
+            for tri ∈ (tri_low, tri_up, tri_mid)
+                ftri = _flatten(tri)
+                @test num_vertices(tri) == 3
+                @test num_vertices(ftri) == 3
+                @test all(
+                    arg -> is_in_neighborhood(arg...),
+                    zip(edge_starts(tri), edge_starts(ftri)),
+                )
+                @test all(
+                    arg -> is_in_neighborhood(arg...),
+                    zip(edge_ends(tri), edge_ends(ftri)),
+                )
+                @test polygons_equal(tri, ftri)
+                @test poly_area(tri) == poly_area(ftri)
+                @test are_polygons_intersecting(tri, tri)
+                @test are_polygons_intersecting(tri, ftri)
+            end
+
+            @test are_polygons_intersecting(tri_low, tri_mid)
+            @test are_polygons_intersecting(tri_mid, tri_low)
+            @test are_polygons_intersecting(tri_mid, _flatten(tri_low))
         end
 
-        @test are_polygons_intersecting(tri_low, tri_mid)
-        @test are_polygons_intersecting(tri_mid, tri_low)
-        @test are_polygons_intersecting(tri_mid, _flatten(tri_low))
+        @testset "Functionality" begin
+            using PlanePolygons: _flatten
+            tri_low = SClosedPolygon(p1, p2, p4)
+            tri_up = SClosedPolygon(p4, p1, p2)
+            poly2 = SClosedPolygon(p1, p3, p4)
+            fpoly2 = _flatten(poly2)
+            poly3 = SClosedPolygon(p1, p2, p5)
+            poly4 = SClosedPolygon(p1, p2, p3, p4)
+            @test num_vertices(tri_low) == 3
+            @test num_vertices(poly4) == 4
+            @test !polygons_equal(tri_low, poly4)
+            @test polygons_equal(tri_low, tri_up)
+            @test !polygons_equal(tri_low, poly2)
+            @test poly_area(tri_low) ≈ 0.5
+            @test point_inside(tri_low, Point(0.25, 0.25))
+            @test are_polygons_intersecting(tri_low, poly2)
+        end
     end
 
-    @testset "SPoly" begin
-        using PlanePolygons: _flatten
-        tri_low = SClosedPolygon(p1, p2, p4)
-        tri_up = SClosedPolygon(p4, p1, p2)
-        poly2 = SClosedPolygon(p1, p3, p4)
-        fpoly2 = _flatten(poly2)
-        poly3 = SClosedPolygon(p1, p2, p5)
-        poly4 = SClosedPolygon(p1, p2, p3, p4)
-        @test num_vertices(tri_low) == 3
-        @test num_vertices(poly4) == 4
-        @test !polygons_equal(tri_low, poly4)
-        @test polygons_equal(tri_low, tri_up)
-        @test !polygons_equal(tri_low, poly2)
-        @test poly_area(tri_low) ≈ 0.5
-        @test point_inside(tri_low, Point(0.25, 0.25))
-        @test are_polygons_intersecting(tri_low, poly2)
+    @testset "Parallelogram / Pixel Overlap" begin
+        using PlanePolygons: point_inside_strict
+        n = 101
+        pxl_x = range(0.0, 1.0; length = n)
+        pxl_y = range(0.0, 1.0; length = n)
+        pxl_generator = (
+            SClosedPolygon(
+                Point(pxl_x[i], pxl_y[j]),
+                Point(pxl_x[i], pxl_y[j+1]),
+                Point(pxl_x[i+1], pxl_y[j+1]),
+                Point(pxl_x[i+1], pxl_y[j]),
+            ) for i = 1:n-1 for j = 1:n-1
+        )
+        Δ = 0.0125
+        pgram_generator = (
+            SClosedPolygon(
+                Point(0.25 - Δ * i, 0.25),
+                Point(0.25 + Δ * i, 0.75),
+                Point(0.75 + Δ * i, 0.75),
+                Point(0.75 - Δ * i, 0.25),
+            ) for i = 0:4
+        )
+        for pgram ∈ pgram_generator
+            @test all(pxl_generator) do pxl
+                overlap = are_polygons_intersecting(pxl, pgram)
+                # because pxls are way smaller than the pgrams
+                # we can test if a point from pxl is inside pgram
+                # or vice versa
+                crude_overlap_test = (
+                    any(Base.Fix1(point_inside_strict, pgram), edge_starts(pxl)) ||
+                    any(Base.Fix1(point_inside_strict, pxl), edge_starts(pgram))
+                )
+                return overlap == crude_overlap_test
+            end
+        end
     end
-
     @testset "Poly" begin
         tri_low = ClosedPolygon([p1, p2, p4])
         tri_up = ClosedPolygon([p2, p4, p1])
