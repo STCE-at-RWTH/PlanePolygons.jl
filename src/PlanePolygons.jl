@@ -4,6 +4,7 @@ using LinearAlgebra
 
 export Point, is_in_neighborhood
 export Vec, vectors_parallel
+export Basis, change_of_basis_matrix, change_basis
 export Line,
     point_on,
     direction_of,
@@ -39,11 +40,7 @@ export unpack_polygon_tangent
 const _HOW_CLOSE_IS_TOO_CLOSE = 1.0e-12
 
 include("dtypes.jl")
-
-_POINT_DOES_NOT_EXIST(T) = Point{T}(T(NaN), T(NaN))
-
+include("bases.jl")
 include("interface.jl")
-
-
 
 end

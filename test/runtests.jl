@@ -274,6 +274,11 @@ end
 
 @testset "MooncakeExt" begin
     using Mooncake
+    using PlanePolygons: _flatten, _unflatten_polygon
+
+    function _strip_svector_tangent(tan::Mooncake.Tangent{TT}) where {TT}
+        return SVector(tan.fields.data...)
+    end
 
     @testset "Polygon area, unpack_polygon_tangent" begin
         poly = SClosedPolygon(
@@ -303,8 +308,26 @@ end
         res_arr = poly_line_intersections(arr1, arr2)
     end
 
+    @testset "Differentiating Lines?" begin
+        ell1 = Line(Point(1.0, 0.0), Vec(0.0, 1.0))
+        ell2 = Line(Point(0.0, 1.0), Vec(1.0, 0.0))
+
+        f_ell1 = _flatten(ell1)
+        f_ell2 = _flatten(ell2)
+
+        @test is_in_neighborhood(line_intersect(ell1, ell2), Point(1.0, 1.0))
+        _fn(a, b) = line_intersect(a, b)[1]
+        cache = Mooncake.prepare_gradient_cache(_fn, f_ell1, f_ell2)
+        res, grad = Mooncake.value_and_gradient!!(cache, _fn, f_ell1, f_ell2)
+        @test grad[1] == Mooncake.NoTangent()
+        f_ell1_grad = _strip_svector_tangent(grad[2])
+        f_ell2_grad = _strip_svector_tangent(grad[3])
+
+        ell1_adj = Line(f_ell1_grad)
+        @show ell1_adj
+    end
+
     @testset "Flattened Polygons Isection (gradient)" begin
-        using PlanePolygons: _flatten, _unflatten_polygon
         poly1 = SClosedPolygon(Point(0.0, 0.0), Point(2.0, 2.0), Point(2.0, 0.0))
         fp1 = _flatten(poly1)
         poly2 = SClosedPolygon(Point(0.0, 0.0), Point(0.0, 2.0), Point(2.0, 0.0))
@@ -315,7 +338,7 @@ end
         @test polygons_equal(poly_intersection(fp1, fp2), poly_result)
 
         cache = Mooncake.prepare_gradient_cache(calc_isect_area, fp1, fp2)
-        out = Mooncake.value_and_gradient!!(cache, calc_isect_area, fp1, fp2)
-        @show out
+        res, grad = Mooncake.value_and_gradient!!(cache, calc_isect_area, fp1, fp2)
+        @test res ≈ poly_area(poly_result)
     end
 end

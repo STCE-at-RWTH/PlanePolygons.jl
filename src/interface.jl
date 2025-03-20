@@ -7,8 +7,17 @@ Inserted by extensions if AD is available.
 """
 function unpack_polygon_tangent end
 
+"""
+    is_in_neighborhood(p0, p1)
+
+Test if both `p0` and `p1` exist
+"""
 function is_in_neighborhood(p0::Point, p1::Point)
-    return isapprox(norm(p1 - p0), 0; atol = _HOW_CLOSE_IS_TOO_CLOSE)
+    return (
+        _point_exists(p0) &&
+        _point_exists(p1) &&
+        isapprox(norm(p1 - p0), 0; atol = _HOW_CLOSE_IS_TOO_CLOSE)
+    )
 end
 
 """
@@ -95,11 +104,11 @@ end
 
 Computes the point of intersection between the lines ``\\ell_1`` and ``\\ell_2``.
 
-Returns `PlanePolygons._POINT_DOES_NOT_EXIST` if there is no intersection. May throw a SingularException.
+Returns `PlanePolygons._POINT_DOES_NOT_EXIST(T)` if there is no intersection. May throw a SingularException.
 """
 function line_intersect(ℓ1, ℓ2)
     if vectors_parallel(direction_of(ℓ1), direction_of(ℓ2))
-        return _POINT_DOES_NOT_EXIST(eltype(point_on(ℓ1)))
+        return _POINT_DOES_NOT_EXIST(_numeric_dtype(point_on(ℓ1)))
     end
     d = point_on(ℓ2) - point_on(ℓ1)
     A = hcat(direction_of(ℓ1), -1 * direction_of(ℓ2))
@@ -290,6 +299,7 @@ function poly_line_intersections(poly, ℓ)
     return isections
 end
 
+# these specializations may not help if the line doesn't intersect the polygon
 function poly_line_intersections(poly::SVector{TWONV,T}, ℓ) where {TWONV,T}
     return map(edge_lines(poly)) do ℓ1
         line_intersect(ℓ, ℓ1)
@@ -304,7 +314,40 @@ end
 
 function _cut_yields_new_poly(poly, isect_pts)
     return any(isect_pts) do pt
-        return pt != _POINT_DOES_NOT_EXIST(eltype(pt)) && point_inside(poly, pt)
+        return _point_exists(pt) && point_inside(poly, pt)
+    end
+end
+
+"""
+Push a point onto the collection in the appropriate way.
+"""
+function _push_point!(out::AbstractArray{Point{T}}, point::Point{T}) where {T}
+    push!(out, point)
+end
+
+function _push_point!(out::AbstractArray{T}, point::Point{T}) where {T}
+    push!(out, point...)
+end
+
+"""
+Get the last point in an array of points.
+"""
+_last_point(arr::AbstractArray{T}) where {T} = Point{T}(arr[end-1], arr[end])
+_last_point(arr::AbstractArray{Point{T}}) where {T} = last(arr)
+
+"""
+Determine if `point` belongs in the output polygon `out` 
+"""
+function _push_to_output_polygon!(out, point, poly_in, ℓ_in)
+    if !(
+        _point_exists(point) &&
+        point_in_right_half_plane(ℓ_in, point) &&
+        point_inside(poly_in, point)
+    )
+        return
+    end
+    if (isempty(out) || !is_in_neighborhood(point, _last_point(out)))
+        _push_point!(out, point)
     end
 end
 
@@ -322,15 +365,8 @@ function cut_poly_with_line(poly::ClockwiseOrientedPolygon{T}, ℓ) where {T}
     end
     new_pts_right = Point{T}[]
     sizehint!(new_pts_right, num_vertices(poly) + 2)
-    for point ∈ Iterators.flatten(zip(edge_starts(poly), isect_pts))
-        all(isnan, point) && continue
-        point_inside(poly, point) || continue
-        if point_in_right_half_plane(ℓ, point)
-            if (isempty(new_pts_right) || !is_in_neighborhood(point, last(new_pts_right)))
-                # point is inside poly, on right side of the line, AND not at the end of the list
-                push!(new_pts_right, point)
-            end
-        end
+    foreach(Iterators.flatten(zip(edge_starts(poly), isect_pts))) do point
+        _push_to_output_polygon!(new_pts_right, point, poly, ℓ)
     end
     polyR = if isempty(new_pts_right)
         ClosedPolygon([Point(T(NaN), T(NaN))])
@@ -350,20 +386,11 @@ function cut_poly_with_line(poly, ℓ)
     end
     new_data = T[]
     #sizehint!(new_data, 2 * (num_vertices(poly)) + 2)
-    for pt ∈ Iterators.flatten(zip(edge_starts(poly), isect_pts))
-        all(isnan, pt) && continue
-        point_inside(poly, pt) || continue
-        if point_in_right_half_plane(ℓ, pt)
-            if (
-                isempty(new_data) ||
-                !is_in_neighborhood(pt, Point(new_data[end-1], new_data[end]))
-            )
-                push!(new_data, pt...)
-            end
-        end
+    foreach(Iterators.flatten(zip(edge_starts(poly), isect_pts))) do point
+        _push_to_output_polygon!(new_data, point, poly, ℓ)
     end
     if isempty(new_data)
-        push!(new_data, _POINT_DOES_NOT_EXIST(T)..., _POINT_DOES_NOT_EXIST(T)...)
+        return [_POINT_DOES_NOT_EXIST(T)..., _POINT_DOES_NOT_EXIST(T)...]
     elseif is_in_neighborhood(
         Point(new_data[1], new_data[2]),
         Point(new_data[end-1], new_data[end]),
@@ -372,28 +399,7 @@ function cut_poly_with_line(poly, ℓ)
     end
     return new_data
 end
-
 # 
-
-"""
-Check if `poly` is fully on the left side of `ax` and that `ax` does not coincide with any sides of `poly`
-
-This is in order to solve the case of polygons that share an edge but have an intersection of size zero.
-
-Returns 'true' if the above conditions are met.
-"""
-function _is_left_separating_axis(ax, poly)
-    all_left = all(edge_starts(poly)) do pt
-        return point_in_left_half_plane(ax, pt)
-    end
-    if !all_left
-        return false
-    end
-    # make sure none of the edges of poly coincide with the proposed separating axis
-    return all(edge_lines(poly)) do ℓ
-        !lines_coincident(ℓ, ax)
-    end
-end
 
 function _poly_image(ℓ, poly)
     return extrema(edge_starts(poly)) do pt
@@ -401,6 +407,9 @@ function _poly_image(ℓ, poly)
     end
 end
 
+"""
+Test if the images of `poly1` and `poly2` after projecting onto `n` do not overlap.
+"""
 function _separating_axis(n, poly1, poly2)
     ℓ = SVector(zero(Point{eltype(n)})..., n...)
     p1_min, p1_max = _poly_image(ℓ, poly1)
@@ -421,6 +430,12 @@ function _separating_axis(n, poly1, poly2)
     end
 end
 
+"""
+    are_polygons_intersection(poly1, poly2)
+
+Is the area of the intersection of `poly1` and `poly2` greater than zero?
+
+"""
 function are_polygons_intersecting(poly1, poly2;)
     has_separating_axis = any(
         n -> _separating_axis(n, poly1, poly2),
@@ -429,6 +444,9 @@ function are_polygons_intersecting(poly1, poly2;)
     return !has_separating_axis
 end
 
+"""
+Cut `poly1` repeatedly with the edges of `poly2`.
+"""
 function _apply_cuts(poly1, poly2)
     res = poly1
     for ℓ ∈ edge_lines(poly2)

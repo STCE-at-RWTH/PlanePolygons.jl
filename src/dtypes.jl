@@ -5,6 +5,15 @@ Alias for SVector{2, T}. Semantically represents a point in 2-D space.
 """
 const Point{T} = SVector{2,T}
 
+struct DoesNotExist{T} end
+
+function _POINT_DOES_NOT_EXIST(T)
+    return Point(DoesNotExist{T}(), DoesNotExist{T}())
+end
+
+_point_exists(::Point{DoesNotExist{T}}) where T = false
+_point_exists(::Point{T}) where T = true
+
 """
     Vec{T}
 
@@ -35,6 +44,10 @@ Methods
 struct Line{T}
     p::Point{T}
     dir::Vec{T}
+end
+
+function Line(data::SVector{4, T}) where {T}
+    return Line(Point(data[1],data[2]), Vec(data[3],data[4]))
 end
 
 """
@@ -108,8 +121,12 @@ A polygon, with its vertices listed in clockwise order (negative orientation).
 """
 abstract type ClockwiseOrientedPolygon{T} end
 
-_numeric_dtype(::ClockwiseOrientedPolygon{T}) where T = T
-_numeric_dtype(::Type{ClockwiseOrientedPolygon{T}}) where T = T
+_numeric_dtype(::ClockwiseOrientedPolygon{T}) where {T} = T
+_numeric_dtype(::Type{ClockwiseOrientedPolygon{T}}) where {T} = T
+_numeric_dtype(::DoesNotExist{T}) where {T} = T
+_numeric_dtype(::Type{DoesNotExist{T}}) where {T} = T
+_numeric_dtype(::Point{DoesNotExist{T}}) where {T} = T
+_numeric_dtype(::Type{Point{DoesNotExist{T}}}) where {T} = T
 _numeric_dtype(other_object) = eltype(other_object)
 
 """
@@ -142,7 +159,7 @@ end
 function ClosedPolygon(poly::ClockwiseOrientedPolygon{T}) where {T}
     return ClosedPolygon(collect(poly.pts))
 end
- 
+
 function ClosedPolygon(poly::ClosedPolygon{T}) where {T}
     return ClosedPolygon(poly.pts)
 end
