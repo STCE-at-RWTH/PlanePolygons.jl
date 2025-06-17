@@ -10,9 +10,9 @@ function unpack_polygon_tangent end
 """
     is_in_neighborhood(p0, p1)
 
-Test if both `p0` and `p1` exist
+Test if both `p0` and `p1` exist and are sufficiently near each other.
 """
-function is_in_neighborhood(p0::Point, p1::Point)
+function is_in_neighborhood(p0, p1)
     return (
         _point_exists(p0) &&
         _point_exists(p1) &&
@@ -23,9 +23,9 @@ end
 """
     vectors_parallel(u::Vec, v::Vec)
 
-Test if vectors `u` and `v` are parallel`.
+Test if vectors `u` and `v` are parallel.
 """
-function vectors_parallel(u::Vec, v::Vec)
+function vectors_parallel(u, v)
     scalarprod2 = (u ⋅ v)^2
     norm2prod = (u[1]^2 + u[2]^2) * (v[1]^2 + v[2]^2)
     return isapprox(scalarprod2, norm2prod; atol = _HOW_CLOSE_IS_TOO_CLOSE) ||
@@ -33,7 +33,7 @@ function vectors_parallel(u::Vec, v::Vec)
 end
 
 """
-    point_on_line(ℓ, point; atol=1.0e-12)
+    is_other_point_on_line(ℓ, point; atol=1.0e-12)
 
 Test if the point `pt` is on the line `ℓ`.
 """
@@ -44,7 +44,7 @@ end
 """
     projected_component(ℓ, pt)
 
-What is the projected length from the base point of `ℓ` to the point `pt`?
+What is the projected length from the base point of `ℓ` to the projection of point `pt` onto `ℓ`?
 """
 function projected_component(ℓ, pt)
     v = pt - point_on(ℓ)
@@ -65,7 +65,7 @@ end
 
 Test if two lines are parallel.
 """
-function lines_parallel(ℓ1, ℓ2;)
+function lines_parallel(ℓ1, ℓ2)
     return vectors_parallel(ℓ1.dir, ℓ2.dir)
 end
 
@@ -86,7 +86,7 @@ Get a vector normal to `ℓ` that points into its right half-plane.
 """
 function right_normal(ℓ)
     dir = direction_of(ℓ)
-    return Vec{eltype(dir)}(dir[2], -dir[1])
+    return Vec{_numeric_dtype(dir)}(dir[2], -dir[1])
 end
 
 """
@@ -96,7 +96,7 @@ Get a vector normal to `ℓ` that points into its left half-plane.
 """
 function left_normal(ℓ)
     dir = direction_of(ℓ)
-    return Vec{eltype(dir)}(-dir[2], dir[1])
+    return Vec{_numeric_dtype(dir)}(-dir[2], dir[1])
 end
 
 """
@@ -152,6 +152,11 @@ function point_in_right_half_plane(ℓ, pt)
     return v1 > v2 || isapprox(v1 - v2, 0; atol = _HOW_CLOSE_IS_TOO_CLOSE)
 end
 
+"""
+  point_in_right_half_plane_strict(ℓ, pt)
+
+Test if the point `pt` is to the right of line `ℓ` but not on line `ℓ`.
+"""
 function point_in_right_half_plane_strict(ℓ, pt)
     (v1, v2) = _right_half_plane(ℓ, pt)
     return v1 > v2 && !isapprox(v1 - v2, 0; atol = _HOW_CLOSE_IS_TOO_CLOSE)
@@ -166,6 +171,11 @@ function point_in_left_half_plane(ℓ, pt;)
     return (is_other_point_on_line(ℓ, pt) || !point_in_right_half_plane(ℓ, pt))
 end
 
+"""
+  point_in_left_half_plane_strict(ℓ, pt)
+
+Test if the point `pt` is to the left of line `ℓ` but not on line `ℓ`.
+"""
 function point_in_left_half_plane_strict(ℓ, pt;)
     return !point_in_right_half_plane(ℓ, pt)
 end
@@ -262,6 +272,18 @@ function outward_edge_normals(poly::SClosedPolygon{NV,T}) where {NV,T}
     return map(n -> -1 * n, inward_edge_normals(poly))
 end
 
+"""
+  edge_normal_bases(poly)
+
+Get a basis for each edge where ``e_1`` points inward normal to the edge and ``e_2`` points tangent towards the next vertex. 
+"""
+function edge_normal_bases(poly)
+    return map(inward_edge_normals(poly), edge_tangents(poly)) do n_hat, t_hat
+        @assert n_hat ⋅ t_hat ≈ 0.0
+        return _hcat_and_normalize(n_hat, t_hat)
+    end
+end
+
 function point_inside(poly, pt)
     return all(Base.Fix2(point_in_right_half_plane, pt), edge_lines(poly))
 end
@@ -277,10 +299,6 @@ Computes the area of clockwise-oriented polygon `poly`.
 """
 function poly_area(poly)
     twoA = zero(_numeric_dtype(poly))
-    dne = _POINT_DOES_NOT_EXIST(_numeric_dtype(poly))
-    if any(==(dne), edge_starts(poly))
-        return twoA
-    end
     for (p1, p2) ∈ zip(edge_starts(poly), edge_ends(poly))
         twoA -= p1[1] * p2[2] - p1[2] * p2[1]
     end

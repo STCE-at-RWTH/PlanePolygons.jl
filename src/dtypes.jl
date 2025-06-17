@@ -6,13 +6,14 @@ Alias for SVector{2, T}. Semantically represents a point in 2-D space.
 const Point{T} = SVector{2,T}
 
 struct DoesNotExist{T} end
+const PointMayExist{T} = Union{Point{T},Point{DoesNotExist{T}}}
 
 function _POINT_DOES_NOT_EXIST(T)
     return Point(DoesNotExist{T}(), DoesNotExist{T}())
 end
 
-_point_exists(::Point{DoesNotExist{T}}) where T = false
-_point_exists(::Point{T}) where T = true
+_point_exists(::Point{DoesNotExist{T}}) where {T} = false
+_point_exists(::Point{T}) where {T} = true
 
 """
     Vec{T}
@@ -46,8 +47,8 @@ struct Line{T}
     dir::Vec{T}
 end
 
-function Line(data::SVector{4, T}) where {T}
-    return Line(Point(data[1],data[2]), Vec(data[3],data[4]))
+function Line(data::SVector{4,T}) where {T}
+    return Line(Point(data[1], data[2]), Vec(data[3], data[4]))
 end
 
 """
@@ -77,12 +78,12 @@ function _flatten(ℓ::Line{T}) where {T}
     return SVector{4,T}(ℓ.p..., ℓ.dir...)
 end
 
-function point_on(ℓ::SVector{4,T}) where {T}
-    return Point{T}(ℓ[1], ℓ[2])
+function point_on(ℓ)
+    return Point{eltype(ℓ)}(ℓ[1], ℓ[2])
 end
 
-function direction_of(ℓ::SVector{4,T}) where {T}
-    return Vec{T}(ℓ[3], ℓ[4])
+function direction_of(ℓ)
+    return Vec{eltype(ℓ)}(ℓ[3], ℓ[4])
 end
 
 """
@@ -90,8 +91,8 @@ end
 
 Unflatten `ℓ` and convert it back to a `Line{T}`.
 """
-function _unflatten_line(ℓ::SVector{4,T}) where {T}
-    return Line{T}(point_on(ℓ), direction_of(ℓ))
+function _unflatten_line(ℓ)
+    return Line{eltype(ℓ)}(point_on(ℓ), direction_of(ℓ))
 end
 
 """
@@ -117,10 +118,15 @@ A polygon, with its vertices listed in clockwise order (negative orientation).
 
 (Private) Interface
 ---
-- `_numeric_dtype(poly)`, `_numeric_dtype(::Type{poly})`: Backing data type of a polygon.
+- `_numeric_dtype(poly)`, `_numeric_dtype(::Type{typeof(poly)})`: Backing data type of a polygon.
 """
 abstract type ClockwiseOrientedPolygon{T} end
 
+"""
+  _numeric_dtype(obj)
+
+Gets the underlying numeric data type of certain objects. Defaults to `eltype`.
+"""
 _numeric_dtype(::ClockwiseOrientedPolygon{T}) where {T} = T
 _numeric_dtype(::Type{ClockwiseOrientedPolygon{T}}) where {T} = T
 _numeric_dtype(::DoesNotExist{T}) where {T} = T
