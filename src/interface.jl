@@ -420,9 +420,14 @@ end
 # 
 
 function _poly_image(ℓ, poly)
-    return extrema(edge_starts(poly)) do pt
-        projected_component(ℓ, pt)
+    a = typemax(eltype(direction_of(ℓ)))
+    b = typemin(eltype(direction_of(ℓ)))
+    for pt ∈ edge_starts(poly)
+        v = projected_component(ℓ, pt)
+        a = min(a, v)
+        b = max(b, v)
     end
+    return (a, b)
 end
 
 """
