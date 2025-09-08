@@ -12,11 +12,11 @@ Base.zero(::DoesNotExist{T}) where {T} = zero(T)
 Base.zero(::Type{DoesNotExist{T}}) where {T} = zero(T)
 
 function _POINT_DOES_NOT_EXIST(T)
-    return Point(DoesNotExist{T}(), DoesNotExist{T}())
+    return Point(T(NaN), T(NaN))
 end
 
 _point_exists(::Point{DoesNotExist{T}}) where {T} = false
-_point_exists(::Point{T}) where {T} = true
+_point_exists(pt::Point{T}) where {T} = !any(isnan, pt)
 
 """
     Vec{T}
