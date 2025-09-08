@@ -8,6 +8,9 @@ const Point{T} = SVector{2,T}
 struct DoesNotExist{T} end
 const PointMayExist{T} = Union{Point{T},Point{DoesNotExist{T}}}
 
+Base.zero(::DoesNotExist{T}) where {T} = zero(T)
+Base.zero(::Type{DoesNotExist{T}}) where {T} = zero(T)
+
 function _POINT_DOES_NOT_EXIST(T)
     return Point(DoesNotExist{T}(), DoesNotExist{T}())
 end
