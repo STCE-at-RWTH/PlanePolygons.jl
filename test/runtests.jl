@@ -79,6 +79,21 @@ using PlanePolygons: _POINT_DOES_NOT_EXIST, _HOW_CLOSE_IS_TOO_CLOSE
             @test is_in_neighborhood(p5, A)
             #@test all(isnan, line_intersect(Line(p1, p5), Line(p2, p3)))
         end
+
+        @testset "Collinearity" begin
+            p1 = point_on(l1)
+            dx = direction_of(l1)
+            @test are_points_collinear(p1, dx)
+            @test all(
+                p -> are_points_collinear(p1, p1 + 2 * dx, p),
+                range(; start = p1 + 0.1 * dx, step = 0.1 * dx, length = 100),
+            )
+            @test all(
+                p -> are_points_collinear_between(p1, p1 + 2 * dx, p),
+                range(; start = p1 + 0.1 * dx, step = 0.1 * dx, length = 4),
+            )
+            @test !are_points_collinear(Point(1.0, 1.0), Point(2.0, 2.0), Point(-1.0, 1.0))
+        end
     end
 
     @testset "SPoly" begin

@@ -42,6 +42,39 @@ function is_other_point_on_line(ℓ, pt)
 end
 
 """
+    are_points_collinear(A, B)
+
+Any two points are always collinear.
+"""
+function are_points_collinear(a, b)
+    return true
+end
+
+"""
+    are_points_collinear(A, B, others...)
+
+Test if all of the points in "others" are collinear with A and B. 
+"""
+function are_points_collinear(a, b, others...)
+    ℓ = Line(a, b - a)
+    return all(others) do pt
+        return is_other_point_on_line(ℓ, pt)
+    end
+end
+
+"""
+    are_points_collinear_between(A, B, others...)
+
+Test if all of the points in "others" are collinear with A and B AND between A and B.
+"""
+function are_points_collinear_between(a, b, others...)
+    ℓ = Line(a, b - a)
+    return all(others) do pt
+        return (is_other_point_on_line(ℓ, pt) && 0 <= projected_component(ℓ, pt) <= 1)
+    end
+end
+
+"""
     projected_component(ℓ, pt)
 
 What is the projected length from the base point of `ℓ` to the projection of point `pt` onto `ℓ`?

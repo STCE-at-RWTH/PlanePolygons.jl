@@ -13,6 +13,8 @@ export Line,
     point_in_right_half_plane,
     point_in_left_half_plane,
     is_other_point_on_line,
+    are_points_collinear,
+    are_points_collinear_between,
     lines_coincident,
     line_intersect,
     lines_parallel
